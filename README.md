@@ -25,3 +25,17 @@ For each emporia EVSE in home assistant, it provides the following buttons/contr
 * charge at full speed now regardless of timeframe (an override)
 * charge on excess solar
 * stop all current charging sessions
+
+## Running the tests
+
+Requires Python 3.10+. The first run creates a virtual environment and installs dependencies automatically.
+
+```
+make test
+```
+
+To force a clean rebuild of the virtual environment:
+
+```
+make clean-venv && make test
+```
