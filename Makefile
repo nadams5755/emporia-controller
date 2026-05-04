@@ -3,7 +3,7 @@ PYTHON  := python3
 PIP     := $(VENV)/bin/pip
 PYTEST  := $(VENV)/bin/pytest
 
-.PHONY: test clean-venv
+.PHONY: test clean
 
 test: $(VENV)/.installed
 	$(PYTEST) tests/ -v -n auto
@@ -14,5 +14,5 @@ $(VENV)/.installed: requirements_test.txt
 	$(PIP) install -r requirements_test.txt --quiet
 	touch $(VENV)/.installed
 
-clean-venv:
+clean:
 	rm -rf $(VENV)

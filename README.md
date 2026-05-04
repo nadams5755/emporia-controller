@@ -37,5 +37,5 @@ make test
 To force a clean rebuild of the virtual environment:
 
 ```
-make clean-venv && make test
+make clean && make test
 ```
