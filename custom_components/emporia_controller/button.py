@@ -20,6 +20,14 @@ _BUTTONS: list[tuple[str, str]] = [
 ]
 
 
+def _evse_friendly_name(hass: HomeAssistant, evse_entity: str) -> str:
+    state = hass.states.get(evse_entity)
+    if state and (name := state.attributes.get("friendly_name")):
+        return name
+    # Fallback: strip domain and title-case (e.g. "switch.my_garage" → "My Garage")
+    return evse_entity.split(".", 1)[-1].replace("_", " ").title()
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -27,7 +35,7 @@ async def async_setup_entry(
 ) -> None:
     coordinator: EmporiaCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities = [
-        EvseModeButton(coordinator, evse, mode, label)
+        EvseModeButton(coordinator, evse, mode, label, _evse_friendly_name(hass, evse))
         for evse in entry.data[CONF_EVSE_ENTITIES]
         for mode, label in _BUTTONS
     ]
@@ -35,20 +43,19 @@ async def async_setup_entry(
 
 
 class EvseModeButton(ButtonEntity):
-    _attr_has_entity_name = True
-
     def __init__(
         self,
         coordinator: EmporiaCoordinator,
         evse_entity: str,
         mode: str,
         label: str,
+        evse_name: str,
     ) -> None:
         self._coordinator = coordinator
         self._evse_entity = evse_entity
         self._mode = mode
         evse_slug = evse_entity.replace(".", "_")
-        self._attr_name = label
+        self._attr_name = f"{evse_name} - {label}"
         self._attr_unique_id = f"{DOMAIN}_{evse_slug}_{mode}"
 
     async def async_press(self) -> None:
