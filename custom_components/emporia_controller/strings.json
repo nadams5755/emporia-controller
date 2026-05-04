@@ -1,0 +1,15 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Emporia EVSE Controller",
+        "data": {
+          "evse_entities": "EVSE switch entities (e.g. switch.garage, switch.driveway)",
+          "site_power_sensor": "Site power sensor (kW, negative = exporting to grid)",
+          "battery_power_sensor": "Battery power sensor (kW, positive = discharging)",
+          "voltage": "Circuit voltage (V)"
+        }
+      }
+    }
+  }
+}
