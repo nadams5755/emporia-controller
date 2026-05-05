@@ -103,7 +103,7 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
                     targets[evse] = 0
 
             elif mode == ChargeMode.EXCESS_SOLAR:
-                if in_charging_window and not powerwall_discharging and export_watts > 0:
+                if in_charging_window and not powerwall_discharging and export_watts > 0 and self._has_vehicle_connected(evse):
                     solar_evses.append(evse)
                 else:
                     targets[evse] = 0
@@ -128,6 +128,14 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
             return {evse: 0 for evse in evses}
 
         return {evse: per_evse for evse in evses}
+
+    def _has_vehicle_connected(self, evse_entity: str) -> bool:
+        state = self.hass.states.get(evse_entity)
+        if state is None:
+            return False
+        icon = state.attributes.get("icon_name")
+        # Default to True if attribute is absent (assume connected)
+        return icon is None or icon != "CarNotConnected"
 
     def _is_powerwall_discharging(self) -> bool:
         # battery_power in kW; positive = discharging (outputting to home/grid)

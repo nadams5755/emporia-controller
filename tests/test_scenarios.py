@@ -349,3 +349,31 @@ async def test_stopped_evse_does_not_consume_solar_budget():
     result = await run_loop(c, hour=11)
     assert result["targets"]["switch.driveway"] == 0
     assert result["targets"]["switch.garage"] == 12
+
+
+async def test_evse_without_vehicle_does_not_consume_solar_budget():
+    """An EVSE in excess-solar mode with no car plugged in is excluded from current
+    allocation, so the other EVSE gets all available solar current."""
+    # Real-world case: garage in excess-solar, no car. Driveway has a car.
+    # 1650 W export / 240 V = 6.88 A → enough for one EVSE at 6 A minimum,
+    # but not two (3 A each < 6 A). Without the fix, neither would charge.
+    coordinator = make_coordinator(["switch.driveway", "switch.garage"])
+    coordinator._evse_modes = {
+        "switch.driveway": ChargeMode.EXCESS_SOLAR,
+        "switch.garage": ChargeMode.EXCESS_SOLAR,
+    }
+
+    def get_state(entity_id):
+        if entity_id == "sensor.site_power":
+            return make_state("-1.65")  # 1650 W export
+        if entity_id == "sensor.battery":
+            return make_state("0.0")
+        if entity_id == "switch.garage":
+            return make_state("off", {"max_charging_rate": 48, "icon_name": "CarNotConnected"})
+        return make_state("on", {"max_charging_rate": 48})  # driveway has car
+
+    coordinator.hass.states.get = MagicMock(side_effect=get_state)
+
+    result = await run_loop(coordinator, hour=11)
+    assert result["targets"]["switch.driveway"] == 6
+    assert result["targets"]["switch.garage"] == 0
