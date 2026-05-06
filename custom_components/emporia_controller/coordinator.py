@@ -81,7 +81,6 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         in_offpeak = CHARGING_WINDOW_START_HOUR <= hour < OFFPEAK_END_HOUR
 
         powerwall_discharging = self._is_powerwall_discharging()
-        export_watts = self._get_export_watts()
 
         targets: dict[str, int] = {}
         solar_evses: list[str] = []
@@ -103,13 +102,14 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
 
             elif mode == ChargeMode.EXCESS_SOLAR:
                 if (in_charging_window and not powerwall_discharging
-                        and export_watts > 0 and self._has_vehicle_connected(evse)):
+                        and self._has_vehicle_connected(evse)):
                     solar_evses.append(evse)
                 else:
                     targets[evse] = 0
 
         if solar_evses:
-            targets.update(self._allocate_solar_current(solar_evses, export_watts))
+            available_watts = self._get_available_solar_watts(solar_evses)
+            targets.update(self._allocate_solar_current(solar_evses, available_watts))
 
         for evse, amps in targets.items():
             await self._set_evse_current(evse, amps)
@@ -117,7 +117,7 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         return {
             "targets": targets,
             "powerwall_discharging": powerwall_discharging,
-            "export_watts": export_watts,
+            "export_watts": self._get_export_watts(),
         }
 
     def _allocate_solar_current(self, evses: list[str], export_watts: float) -> dict[str, int]:
@@ -147,6 +147,23 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
             return float(state.state) > BATTERY_DISCHARGE_THRESHOLD_KW
         except ValueError:
             return False
+
+    def _get_available_solar_watts(self, solar_evses: list[str]) -> float:
+        # Solar budget = current site export + what our solar-mode EVSEs are already consuming.
+        # Without reclaim, the site sensor drops to ~0 the moment charging starts, which would
+        # cause the controller to immediately turn the charger back off.
+        state = self.hass.states.get(self._site_power_sensor)
+        if state is None:
+            _LOGGER.warning("Site power sensor %s unavailable", self._site_power_sensor)
+            return 0.0
+        try:
+            raw_export = -float(state.state) * 1000  # negative site_kw → positive export
+            reclaim = sum(
+                self._last_targets.get(evse, 0) * self._voltage for evse in solar_evses
+            )
+            return max(0.0, raw_export + reclaim)
+        except ValueError:
+            return 0.0
 
     def _get_export_watts(self) -> float:
         # site_power in kW; negative = exporting to grid (excess solar)
