@@ -21,7 +21,6 @@ CONF_VOLTAGE = "voltage"
 STORAGE_KEY = f"{DOMAIN}.state"
 STORAGE_VERSION = 1
 
-
 class ChargeMode:
     EXCESS_SOLAR = "excess_solar"
     FULL_SPEED_OFFPEAK = "full_speed_offpeak"

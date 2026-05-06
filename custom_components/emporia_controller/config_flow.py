@@ -13,27 +13,37 @@ from .const import (
     DOMAIN,
 )
 
-
 def _build_schema(defaults: dict) -> vol.Schema:
     return vol.Schema(
         {
-            vol.Required(CONF_EVSE_ENTITIES, default=defaults.get(CONF_EVSE_ENTITIES, [])): selector.EntitySelector(
+            vol.Required(
+                CONF_EVSE_ENTITIES,
+                default=defaults.get(CONF_EVSE_ENTITIES, []),
+            ): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="switch", multiple=True)
             ),
-            vol.Required(CONF_SITE_POWER_SENSOR, default=defaults.get(CONF_SITE_POWER_SENSOR, "")): selector.EntitySelector(
+            vol.Required(
+                CONF_SITE_POWER_SENSOR,
+                default=defaults.get(CONF_SITE_POWER_SENSOR, ""),
+            ): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor")
             ),
-            vol.Required(CONF_BATTERY_POWER_SENSOR, default=defaults.get(CONF_BATTERY_POWER_SENSOR, "")): selector.EntitySelector(
+            vol.Required(
+                CONF_BATTERY_POWER_SENSOR,
+                default=defaults.get(CONF_BATTERY_POWER_SENSOR, ""),
+            ): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor")
             ),
-            vol.Optional(CONF_VOLTAGE, default=defaults.get(CONF_VOLTAGE, DEFAULT_VOLTAGE)): selector.NumberSelector(
+            vol.Optional(
+                CONF_VOLTAGE,
+                default=defaults.get(CONF_VOLTAGE, DEFAULT_VOLTAGE),
+            ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=100, max=480, step=1, unit_of_measurement="V", mode="box"
                 )
             ),
         }
     )
-
 
 class EmporiaControllerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -52,7 +62,6 @@ class EmporiaControllerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
         return EmporiaControllerOptionsFlow(config_entry)
-
 
 class EmporiaControllerOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:

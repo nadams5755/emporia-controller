@@ -30,7 +30,6 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-
 class EmporiaCoordinator(DataUpdateCoordinator[dict]):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(
@@ -103,7 +102,8 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
                     targets[evse] = 0
 
             elif mode == ChargeMode.EXCESS_SOLAR:
-                if in_charging_window and not powerwall_discharging and export_watts > 0 and self._has_vehicle_connected(evse):
+                if (in_charging_window and not powerwall_discharging
+                        and export_watts > 0 and self._has_vehicle_connected(evse)):
                     solar_evses.append(evse)
                 else:
                     targets[evse] = 0
