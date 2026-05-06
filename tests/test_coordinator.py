@@ -380,6 +380,72 @@ async def test_control_loop_returns_powerwall_and_export_state():
         result = await c._run_control_loop()
     assert result["powerwall_discharging"] is True
     assert result["export_watts"] == pytest.approx(1000.0)
+    assert "skip_reasons" in result
+    assert "available_watts" in result
+
+
+async def test_control_loop_skip_reason_stopped():
+    c = make_loop_coordinator(modes={"switch.evse1": ChargeMode.STOPPED})
+    with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
+        dt.now.return_value = at(10)
+        result = await c._run_control_loop()
+    assert result["skip_reasons"]["switch.evse1"] == "stopped"
+
+
+async def test_control_loop_skip_reason_offpeak_outside_window():
+    c = make_loop_coordinator(battery_kw=0.0, modes={"switch.evse1": ChargeMode.FULL_SPEED_OFFPEAK})
+    with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
+        dt.now.return_value = at(20)
+        result = await c._run_control_loop()
+    assert result["skip_reasons"]["switch.evse1"] == "outside off-peak window"
+
+
+async def test_control_loop_skip_reason_solar_outside_window():
+    c = make_loop_coordinator(battery_kw=0.0, modes={"switch.evse1": ChargeMode.EXCESS_SOLAR})
+    with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
+        dt.now.return_value = at(20)
+        result = await c._run_control_loop()
+    assert result["skip_reasons"]["switch.evse1"] == "outside charging window"
+
+
+async def test_control_loop_skip_reason_insufficient_solar():
+    c = make_loop_coordinator(
+        export_kw=-1.0,  # 1000 W / 240 V = 4 A < 6 A minimum
+        battery_kw=0.0,
+        modes={"switch.evse1": ChargeMode.EXCESS_SOLAR},
+    )
+    with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
+        dt.now.return_value = at(10)
+        result = await c._run_control_loop()
+    assert "insufficient solar" in result["skip_reasons"]["switch.evse1"]
+
+
+async def test_control_loop_no_skip_reason_for_charging_override():
+    c = make_loop_coordinator(modes={"switch.evse1": ChargeMode.OVERRIDE})
+    with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
+        dt.now.return_value = at(10)
+        result = await c._run_control_loop()
+    assert "switch.evse1" not in result["skip_reasons"]
+
+
+async def test_control_loop_available_watts_set_for_solar_evses():
+    c = make_loop_coordinator(
+        export_kw=-2.0,
+        battery_kw=0.0,
+        modes={"switch.evse1": ChargeMode.EXCESS_SOLAR},
+    )
+    with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
+        dt.now.return_value = at(10)
+        result = await c._run_control_loop()
+    assert result["available_watts"] == pytest.approx(2000.0)
+
+
+async def test_control_loop_available_watts_zero_when_no_solar_evses():
+    c = make_loop_coordinator(modes={"switch.evse1": ChargeMode.STOPPED})
+    with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
+        dt.now.return_value = at(10)
+        result = await c._run_control_loop()
+    assert result["available_watts"] == 0.0
 
 # ---------------------------------------------------------------------------
 # State management
