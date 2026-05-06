@@ -34,3 +34,6 @@ htmlcov/
 .idea/
 *.swp
 *.swo
+
+# Local credentials (never commit)
+.ha_credentials

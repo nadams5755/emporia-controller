@@ -56,3 +56,32 @@ All entity IDs are user-configured at setup time (and reconfigurable via Setting
 **EVSE control:**
 - Stop: `switch.turn_off {entity_id}`
 - Set rate: `emporia_vue.set_charger_current {entity_id, current}` (min 6A, max 48A), then `switch.turn_on`
+
+## Deployment
+
+HA credentials (URL + long-lived API token) are stored in `.ha_credentials` at the repo root (gitignored). Read them from there.
+
+The integration is installed in HA via HACS and tracked by the update entity `update.emporia_evse_controller_update`. To deploy after pushing a commit:
+
+**1. Install the new version via HACS:**
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $HA_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"entity_id": "update.emporia_evse_controller_update", "version": "<commit-hash>"}' \
+  "$HA_URL/api/services/update/install"
+```
+
+**2. Restart HA:**
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $HA_TOKEN" \
+  "$HA_URL/api/services/homeassistant/restart"
+```
+
+**3. Wait for HA to come back up and confirm:**
+```bash
+until curl -s -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/" 2>/dev/null | grep -q message; do sleep 5; done
+curl -s -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/update.emporia_evse_controller_update" \
+  | python3 -c "import json,sys; a=json.load(sys.stdin)['attributes']; print('installed:', a['installed_version'])"
+```
