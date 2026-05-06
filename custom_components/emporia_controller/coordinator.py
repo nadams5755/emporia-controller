@@ -101,13 +101,16 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         )
 
         targets: dict[str, int] = {}
+        skip_reasons: dict[str, str] = {}
         solar_evses: list[str] = []
+        available_watts: float = 0.0
 
         for evse in self._evse_entities:
             mode = self._evse_modes.get(evse, ChargeMode.EXCESS_SOLAR)
 
             if mode == ChargeMode.STOPPED:
                 targets[evse] = 0
+                skip_reasons[evse] = "stopped"
 
             elif mode == ChargeMode.OVERRIDE:
                 targets[evse] = self._get_max_amps(evse)
@@ -119,29 +122,35 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
                     reason = "powerwall discharging" if powerwall_discharging else "outside off-peak window"
                     _LOGGER.debug("%s full_speed_offpeak skipped: %s", evse, reason)
                     targets[evse] = 0
+                    skip_reasons[evse] = reason
 
             elif mode == ChargeMode.EXCESS_SOLAR:
                 if (in_charging_window and not powerwall_discharging
                         and self._has_vehicle_connected(evse)):
                     solar_evses.append(evse)
                 else:
-                    _LOGGER.debug(
-                        "%s excess_solar skipped: %s", evse,
-                        _solar_skip_reason(in_charging_window, powerwall_discharging),
-                    )
+                    reason = _solar_skip_reason(in_charging_window, powerwall_discharging)
+                    _LOGGER.debug("%s excess_solar skipped: %s", evse, reason)
                     targets[evse] = 0
+                    skip_reasons[evse] = reason
 
         if solar_evses:
             available_watts = self._get_available_solar_watts(solar_evses)
             targets.update(self._allocate_solar_current(solar_evses, available_watts))
+            if not any(targets.get(e, 0) > 0 for e in solar_evses):
+                skip_reasons.update(dict.fromkeys(
+                    solar_evses, f"insufficient solar ({available_watts:.0f} W available)"
+                ))
 
         for evse, amps in targets.items():
             await self._set_evse_current(evse, amps)
 
         return {
             "targets": targets,
+            "skip_reasons": skip_reasons,
             "powerwall_discharging": powerwall_discharging,
             "export_watts": export_watts,
+            "available_watts": available_watts,
         }
 
     def _allocate_solar_current(self, evses: list[str], export_watts: float) -> dict[str, int]:

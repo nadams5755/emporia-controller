@@ -45,6 +45,10 @@ class _SwitchEntity:
     _attr_name: str = ""
     _attr_unique_id: str = ""
 
+class _SensorEntity:
+    _attr_name: str = ""
+    _attr_unique_id: str = ""
+
 def _install_stubs() -> None:
     update_coordinator = MagicMock()
     update_coordinator.DataUpdateCoordinator = _DataUpdateCoordinator
@@ -56,6 +60,9 @@ def _install_stubs() -> None:
 
     switch_mod = MagicMock()
     switch_mod.SwitchEntity = _SwitchEntity
+
+    sensor_mod = MagicMock()
+    sensor_mod.SensorEntity = _SensorEntity
 
     dt_mod = MagicMock()
 
@@ -72,6 +79,7 @@ def _install_stubs() -> None:
             "homeassistant.util.dt": dt_mod,
             "homeassistant.components": MagicMock(),
             "homeassistant.components.switch": switch_mod,
+            "homeassistant.components.sensor": sensor_mod,
         }
     )
 
