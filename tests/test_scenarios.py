@@ -165,6 +165,29 @@ async def test_powerwall_discharging_reduces_solar_charge_rate():
     result = await run_loop(c, hour=11)
     assert result["targets"]["switch.driveway"] == 8
 
+async def test_powerwall_charging_reduces_solar_budget():
+    """Solar going into the Powerwall is already spoken for — EVSEs get only what remains."""
+    c = scenario(
+        evse_entities=["switch.driveway"],
+        modes={"switch.driveway": ChargeMode.EXCESS_SOLAR},
+        export_kw=-5.0,   # 5000W export to grid
+        battery_kw=-2.0,  # 2000W battery charging (negative = charging)
+    )
+    result = await run_loop(c, hour=11)
+    # available = 5000 - 2000 = 3000W → 3000/240 = 12A
+    assert result["targets"]["switch.driveway"] == 12
+
+async def test_powerwall_charging_stops_evse_when_solar_insufficient():
+    """If battery charging consumes most of the solar, EVSEs stop rather than under-charging."""
+    c = scenario(
+        evse_entities=["switch.driveway"],
+        modes={"switch.driveway": ChargeMode.EXCESS_SOLAR},
+        export_kw=-2.0,   # 2000W export to grid
+        battery_kw=-1.5,  # 1500W battery charging → available = 500W → 2A < 6A min
+    )
+    result = await run_loop(c, hour=11)
+    assert result["targets"]["switch.driveway"] == 0
+
 # ---------------------------------------------------------------------------
 # "Charge Full Speed Off-Peak" button
 # ---------------------------------------------------------------------------

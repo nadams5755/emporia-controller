@@ -195,8 +195,19 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         except ValueError:
             return 0.0
 
+    def _get_battery_charge_watts(self) -> float:
+        # battery_power in kW; negative = charging from solar/grid
+        state = self.hass.states.get(self._battery_power_sensor)
+        if state is None:
+            return 0.0
+        try:
+            return max(0.0, -float(state.state) * 1000)
+        except ValueError:
+            return 0.0
+
     def _get_available_solar_watts(self, solar_evses: list[str]) -> float:
-        # Solar budget = current site export + what our solar-mode EVSEs are already consuming.
+        # Solar budget = current site export + what our solar-mode EVSEs are already consuming
+        # - battery discharge (not solar-sourced) - battery charge (solar already spoken for).
         # Without reclaim, the site sensor drops to ~0 the moment charging starts, which would
         # cause the controller to immediately turn the charger back off.
         state = self.hass.states.get(self._site_power_sensor)
@@ -209,10 +220,12 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
                 self._last_targets.get(evse, 0) * self._voltage for evse in solar_evses
             )
             battery_discharge = self._get_battery_discharge_watts()
-            available = max(0.0, raw_export + reclaim - battery_discharge)
+            battery_charge = self._get_battery_charge_watts()
+            available = max(0.0, raw_export + reclaim - battery_discharge - battery_charge)
             _LOGGER.debug(
-                "Solar budget: site_export=%.0fW reclaim=%.0fW battery_discharge=%.0fW available=%.0fW",
-                raw_export, reclaim, battery_discharge, available,
+                "Solar budget: site_export=%.0fW reclaim=%.0fW battery_discharge=%.0fW"
+                " battery_charge=%.0fW available=%.0fW",
+                raw_export, reclaim, battery_discharge, battery_charge, available,
             )
             return available
         except ValueError:
