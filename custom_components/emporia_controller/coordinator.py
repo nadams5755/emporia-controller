@@ -239,11 +239,11 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
             )
         else:
             await self.hass.services.async_call(
+                "switch", "turn_on", {"entity_id": evse_entity}, blocking=True
+            )
+            await self.hass.services.async_call(
                 "emporia_vue",
                 "set_charger_current",
                 {"entity_id": evse_entity, "current": amps},
                 blocking=True,
-            )
-            await self.hass.services.async_call(
-                "switch", "turn_on", {"entity_id": evse_entity}, blocking=True
             )
