@@ -328,3 +328,48 @@ async def test_evse_without_vehicle_does_not_consume_solar_budget():
     result = await run_loop(coordinator, hour=11)
     assert result["targets"]["switch.driveway"] == 6
     assert result["targets"]["switch.garage"] == 0
+
+
+async def test_charging_does_not_chatter_when_consuming_available_solar():
+    """Charger already running at 23 A should stay on even though its own draw has
+    consumed the apparent site export — the controller reclaims its prior output to
+    avoid an off/on/off feedback loop."""
+    coordinator = make_coordinator(["switch.driveway"])
+    coordinator._evse_modes = {"switch.driveway": ChargeMode.EXCESS_SOLAR}
+    # Charger consumed 23 A × 240 V = 5520 W; site now shows only 100 W export
+    coordinator._last_targets = {"switch.driveway": 23}
+
+    def get_state(entity_id):
+        if entity_id == "sensor.site_power":
+            return make_state("-0.1")   # 100 W export — looks nearly zero without reclaim
+        if entity_id == "sensor.battery":
+            return make_state("0.0")
+        return make_state("on", {"max_charging_rate": 48})
+
+    coordinator.hass.states.get = MagicMock(side_effect=get_state)
+
+    result = await run_loop(coordinator, hour=11)
+    # Available = 100 W + 23 A × 240 V = 5620 W → 5620 / 240 = 23 A
+    assert result["targets"]["switch.driveway"] == 23
+
+
+async def test_charging_stops_when_solar_genuinely_gone():
+    """If solar truly drops (not just consumed by charging), the controller stops the
+    charger rather than continuing to draw from the grid."""
+    coordinator = make_coordinator(["switch.driveway"])
+    coordinator._evse_modes = {"switch.driveway": ChargeMode.EXCESS_SOLAR}
+    # Grid is importing 2 kW net — even reclaiming 23 A × 240 V = 5520 W leaves only
+    # 5520 - 2000 = 3520 W, which is 14 A.  But if we were at 0 last_targets, nothing to reclaim.
+    coordinator._last_targets = {"switch.driveway": 0}  # charger was already off
+
+    def get_state(entity_id):
+        if entity_id == "sensor.site_power":
+            return make_state("2.0")   # 2 kW import from grid, no solar at all
+        if entity_id == "sensor.battery":
+            return make_state("0.0")
+        return make_state("on", {"max_charging_rate": 48})
+
+    coordinator.hass.states.get = MagicMock(side_effect=get_state)
+
+    result = await run_loop(coordinator, hour=11)
+    assert result["targets"]["switch.driveway"] == 0
