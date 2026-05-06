@@ -109,13 +109,13 @@ async def test_plug_in_at_1pm_cloudy_day_does_not_charge():
     result = await run_loop(c, hour=13)
     assert result["targets"]["switch.driveway"] == 0
 
-async def test_plug_in_at_1pm_powerwall_discharging_does_not_charge():
-    """Even with solar export, if the Powerwall is discharging the car does not charge."""
+async def test_plug_in_at_1pm_powerwall_discharge_exceeds_solar_does_not_charge():
+    """If battery discharge leaves less than 6A of true solar excess, the car doesn't charge."""
     c = scenario(
         evse_entities=["switch.driveway"],
         modes={"switch.driveway": ChargeMode.EXCESS_SOLAR},
-        export_kw=-2.0,
-        battery_kw=1.5,   # Powerwall outputting to home
+        export_kw=-2.0,   # 2000W export
+        battery_kw=1.5,   # 1500W battery discharge → available = 500W → 2A < min
     )
     result = await run_loop(c, hour=13)
     assert result["targets"]["switch.driveway"] == 0
@@ -153,16 +153,17 @@ async def test_solar_drops_below_minimum_charging_stops():
     result = await run_loop(c, hour=11)
     assert result["targets"]["switch.driveway"] == 0
 
-async def test_powerwall_kicks_in_during_solar_charging_stops_car():
-    """If the Powerwall starts discharging mid-session, charging stops on the next loop."""
+async def test_powerwall_discharging_reduces_solar_charge_rate():
+    """If the Powerwall starts discharging, the charge rate is reduced by the battery output
+    rather than stopping the session — only solar excess drives the EV."""
     c = scenario(
         evse_entities=["switch.driveway"],
         modes={"switch.driveway": ChargeMode.EXCESS_SOLAR},
-        export_kw=-2.0,
-        battery_kw=0.5,   # Powerwall now discharging
+        export_kw=-3.0,   # 3000W export
+        battery_kw=1.0,   # 1000W battery discharge → available = 2000W → 8A (not 12A)
     )
     result = await run_loop(c, hour=11)
-    assert result["targets"]["switch.driveway"] == 0
+    assert result["targets"]["switch.driveway"] == 8
 
 # ---------------------------------------------------------------------------
 # "Charge Full Speed Off-Peak" button
