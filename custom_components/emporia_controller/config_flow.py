@@ -6,6 +6,7 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_BATTERY_POWER_SENSOR,
+    CONF_DEBUG_LOGGING,
     CONF_EVSE_ENTITIES,
     CONF_SITE_POWER_SENSOR,
     CONF_VOLTAGE,
@@ -42,6 +43,10 @@ def _build_schema(defaults: dict) -> vol.Schema:
                     min=100, max=480, step=1, unit_of_measurement="V", mode="box"
                 )
             ),
+            vol.Optional(
+                CONF_DEBUG_LOGGING,
+                default=defaults.get(CONF_DEBUG_LOGGING, False),
+            ): selector.BooleanSelector(),
         }
     )
 
