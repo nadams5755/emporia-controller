@@ -1,0 +1,20 @@
+[MAIN]
+# Add project root so pylint can resolve custom_components.*
+init-hook='import sys; sys.path.insert(0, ".")'
+# homeassistant and voluptuous are not installed in the test venv; stubs handle HA
+ignored-modules=homeassistant,voluptuous
+
+[MESSAGES CONTROL]
+disable=
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    too-many-instance-attributes,
+    too-few-public-methods,
+    too-many-arguments,
+    too-many-positional-arguments,
+    duplicate-code,
+    protected-access,
+
+[FORMAT]
+max-line-length=120

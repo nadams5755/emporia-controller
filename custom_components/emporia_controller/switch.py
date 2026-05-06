@@ -20,13 +20,11 @@ _MODES: list[tuple[str, str]] = [
     (ChargeMode.STOPPED, "Stop Charging"),
 ]
 
-
 def _evse_friendly_name(hass: HomeAssistant, evse_entity: str) -> str:
     state = hass.states.get(evse_entity)
     if state and (name := state.attributes.get("friendly_name")):
         return name
     return evse_entity.split(".", 1)[-1].replace("_", " ").title()
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -40,7 +38,6 @@ async def async_setup_entry(
         for mode, label in _MODES
     ]
     async_add_entities(entities)
-
 
 class EvseModeSwitch(CoordinatorEntity, SwitchEntity):
     def __init__(
@@ -62,9 +59,9 @@ class EvseModeSwitch(CoordinatorEntity, SwitchEntity):
     def is_on(self) -> bool:
         return self.coordinator.get_mode(self._evse_entity) == self._mode
 
-    async def async_turn_on(self, **kwargs) -> None:
+    async def async_turn_on(self, **kwargs) -> None:  # pylint: disable=unused-argument
         _LOGGER.info("Mode selected: '%s' for %s", self._attr_name, self._evse_entity)
         await self.coordinator.set_mode(self._evse_entity, self._mode)
 
-    async def async_turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **kwargs) -> None:  # pylint: disable=unused-argument
         pass

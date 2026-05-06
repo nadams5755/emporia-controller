@@ -4,7 +4,6 @@ End-user behavior scenarios.
 Each test describes a real situation a user might encounter and asserts
 what the controller does automatically, without them pressing anything.
 """
-import pytest
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,18 +17,15 @@ from custom_components.emporia_controller.const import (
     ChargeMode,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 def make_state(value, attributes=None):
     state = MagicMock()
     state.state = str(value)
     state.attributes = attributes or {}
     return state
-
 
 def make_coordinator(evse_entities, voltage=DEFAULT_VOLTAGE):
     hass = MagicMock()
@@ -53,8 +49,7 @@ def make_coordinator(evse_entities, voltage=DEFAULT_VOLTAGE):
 
     return coordinator
 
-
-def scenario(evse_entities, modes, export_kw, battery_kw, hour, voltage=DEFAULT_VOLTAGE):
+def scenario(evse_entities, modes, export_kw, battery_kw, voltage=DEFAULT_VOLTAGE):
     """Build a coordinator and wire up sensor states for a scenario test."""
     coordinator = make_coordinator(evse_entities, voltage=voltage)
     coordinator._evse_modes = modes
@@ -69,21 +64,17 @@ def scenario(evse_entities, modes, export_kw, battery_kw, hour, voltage=DEFAULT_
     coordinator.hass.states.get = MagicMock(side_effect=get_state)
     return coordinator
 
-
 def at(hour):
     return datetime(2024, 1, 1, hour, 0, tzinfo=timezone.utc)
-
 
 async def run_loop(coordinator, hour):
     with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
         dt.now.return_value = at(hour)
         return await coordinator._run_control_loop()
 
-
 # ---------------------------------------------------------------------------
 # Default mode (excess solar) — no user action required
 # ---------------------------------------------------------------------------
-
 
 async def test_plug_in_at_midnight_no_solar_does_not_charge():
     """After midnight there's no sun, so an EV plugged in on the default mode waits."""
@@ -92,11 +83,9 @@ async def test_plug_in_at_midnight_no_solar_does_not_charge():
         modes={"switch.driveway": ChargeMode.EXCESS_SOLAR},
         export_kw=0.5,   # home is importing, not exporting
         battery_kw=0.0,
-        hour=0,
     )
     result = await run_loop(c, hour=0)
     assert result["targets"]["switch.driveway"] == 0
-
 
 async def test_plug_in_at_1pm_sunny_day_charges_on_solar():
     """On a sunny afternoon with excess solar the car charges automatically."""
@@ -105,11 +94,9 @@ async def test_plug_in_at_1pm_sunny_day_charges_on_solar():
         modes={"switch.driveway": ChargeMode.EXCESS_SOLAR},
         export_kw=-3.0,   # 3000 W export → 3000/240 = 12 A
         battery_kw=0.0,
-        hour=13,
     )
     result = await run_loop(c, hour=13)
     assert result["targets"]["switch.driveway"] == 12
-
 
 async def test_plug_in_at_1pm_cloudy_day_does_not_charge():
     """On a cloudy afternoon with no excess solar the car just sits."""
@@ -118,11 +105,9 @@ async def test_plug_in_at_1pm_cloudy_day_does_not_charge():
         modes={"switch.driveway": ChargeMode.EXCESS_SOLAR},
         export_kw=0.8,   # importing from grid
         battery_kw=0.0,
-        hour=13,
     )
     result = await run_loop(c, hour=13)
     assert result["targets"]["switch.driveway"] == 0
-
 
 async def test_plug_in_at_1pm_powerwall_discharging_does_not_charge():
     """Even with solar export, if the Powerwall is discharging the car does not charge."""
@@ -131,11 +116,9 @@ async def test_plug_in_at_1pm_powerwall_discharging_does_not_charge():
         modes={"switch.driveway": ChargeMode.EXCESS_SOLAR},
         export_kw=-2.0,
         battery_kw=1.5,   # Powerwall outputting to home
-        hour=13,
     )
     result = await run_loop(c, hour=13)
     assert result["targets"]["switch.driveway"] == 0
-
 
 async def test_plug_in_after_4pm_does_not_charge_even_with_solar():
     """The charging window closes at 4pm; excess-solar mode stops regardless of export."""
@@ -144,11 +127,9 @@ async def test_plug_in_after_4pm_does_not_charge_even_with_solar():
         modes={"switch.driveway": ChargeMode.EXCESS_SOLAR},
         export_kw=-4.0,   # plenty of solar
         battery_kw=0.0,
-        hour=16,          # 4pm = end of charging window
     )
-    result = await run_loop(c, hour=16)
+    result = await run_loop(c, hour=16)   # 4pm = end of charging window
     assert result["targets"]["switch.driveway"] == 0
-
 
 async def test_cloud_passes_solar_returns_charging_resumes():
     """If solar export resumes (cloud passes), the next control loop starts charging."""
@@ -157,11 +138,9 @@ async def test_cloud_passes_solar_returns_charging_resumes():
         modes={"switch.driveway": ChargeMode.EXCESS_SOLAR},
         export_kw=-2.4,   # 2400 W → 10 A
         battery_kw=0.0,
-        hour=11,
     )
     result = await run_loop(c, hour=11)
     assert result["targets"]["switch.driveway"] == 10
-
 
 async def test_solar_drops_below_minimum_charging_stops():
     """If export falls below what's needed for 6 A minimum, charging stops."""
@@ -170,11 +149,9 @@ async def test_solar_drops_below_minimum_charging_stops():
         modes={"switch.driveway": ChargeMode.EXCESS_SOLAR},
         export_kw=-1.0,   # 1000 W / 240 V = 4 A < 6 A minimum
         battery_kw=0.0,
-        hour=11,
     )
     result = await run_loop(c, hour=11)
     assert result["targets"]["switch.driveway"] == 0
-
 
 async def test_powerwall_kicks_in_during_solar_charging_stops_car():
     """If the Powerwall starts discharging mid-session, charging stops on the next loop."""
@@ -183,16 +160,13 @@ async def test_powerwall_kicks_in_during_solar_charging_stops_car():
         modes={"switch.driveway": ChargeMode.EXCESS_SOLAR},
         export_kw=-2.0,
         battery_kw=0.5,   # Powerwall now discharging
-        hour=11,
     )
     result = await run_loop(c, hour=11)
     assert result["targets"]["switch.driveway"] == 0
 
-
 # ---------------------------------------------------------------------------
 # "Charge Full Speed Off-Peak" button
 # ---------------------------------------------------------------------------
-
 
 async def test_full_speed_offpeak_at_midnight_charges_immediately():
     """Pressing 'Charge Full Speed Off-Peak' after midnight starts charging right away."""
@@ -201,11 +175,9 @@ async def test_full_speed_offpeak_at_midnight_charges_immediately():
         modes={"switch.driveway": ChargeMode.FULL_SPEED_OFFPEAK},
         export_kw=0.5,   # doesn't matter — mode ignores solar
         battery_kw=0.0,
-        hour=0,
     )
     result = await run_loop(c, hour=0)
     assert result["targets"]["switch.driveway"] == 48
-
 
 async def test_full_speed_offpeak_stops_at_3pm():
     """'Charge Full Speed Off-Peak' automatically stops when the off-peak window ends at 3pm."""
@@ -214,11 +186,9 @@ async def test_full_speed_offpeak_stops_at_3pm():
         modes={"switch.driveway": ChargeMode.FULL_SPEED_OFFPEAK},
         export_kw=0.0,
         battery_kw=0.0,
-        hour=15,   # 3pm = OFFPEAK_END_HOUR, exclusive boundary
     )
-    result = await run_loop(c, hour=15)
+    result = await run_loop(c, hour=15)   # 3pm = OFFPEAK_END_HOUR, exclusive boundary
     assert result["targets"]["switch.driveway"] == 0
-
 
 async def test_full_speed_offpeak_pauses_when_powerwall_discharges():
     """If the Powerwall starts discharging during off-peak charging, the car pauses."""
@@ -227,16 +197,13 @@ async def test_full_speed_offpeak_pauses_when_powerwall_discharges():
         modes={"switch.driveway": ChargeMode.FULL_SPEED_OFFPEAK},
         export_kw=0.0,
         battery_kw=1.0,   # discharging
-        hour=1,
     )
     result = await run_loop(c, hour=1)
     assert result["targets"]["switch.driveway"] == 0
 
-
 # ---------------------------------------------------------------------------
 # "Charge Full Speed Now" (override) button
 # ---------------------------------------------------------------------------
-
 
 async def test_override_charges_after_midnight_regardless_of_solar():
     """'Charge Full Speed Now' works after midnight even with no solar."""
@@ -245,11 +212,9 @@ async def test_override_charges_after_midnight_regardless_of_solar():
         modes={"switch.driveway": ChargeMode.OVERRIDE},
         export_kw=0.5,   # importing
         battery_kw=0.0,
-        hour=0,
     )
     result = await run_loop(c, hour=0)
     assert result["targets"]["switch.driveway"] == 48
-
 
 async def test_override_charges_outside_all_windows():
     """'Charge Full Speed Now' ignores all time windows — still charges at 5pm."""
@@ -258,11 +223,9 @@ async def test_override_charges_outside_all_windows():
         modes={"switch.driveway": ChargeMode.OVERRIDE},
         export_kw=0.5,
         battery_kw=0.0,
-        hour=17,   # outside both charging and off-peak windows
     )
-    result = await run_loop(c, hour=17)
+    result = await run_loop(c, hour=17)   # outside both charging and off-peak windows
     assert result["targets"]["switch.driveway"] == 48
-
 
 async def test_override_charges_even_when_powerwall_is_discharging():
     """'Charge Full Speed Now' ignores Powerwall state — it always charges."""
@@ -271,16 +234,13 @@ async def test_override_charges_even_when_powerwall_is_discharging():
         modes={"switch.driveway": ChargeMode.OVERRIDE},
         export_kw=0.0,
         battery_kw=2.0,   # Powerwall discharging
-        hour=14,
     )
     result = await run_loop(c, hour=14)
     assert result["targets"]["switch.driveway"] == 48
 
-
 # ---------------------------------------------------------------------------
 # "Stop Charging" button
 # ---------------------------------------------------------------------------
-
 
 async def test_stop_charging_halts_even_with_abundant_solar():
     """'Stop Charging' always results in 0 amps regardless of solar or time."""
@@ -289,16 +249,13 @@ async def test_stop_charging_halts_even_with_abundant_solar():
         modes={"switch.driveway": ChargeMode.STOPPED},
         export_kw=-10.0,   # tonnes of solar
         battery_kw=0.0,
-        hour=11,
     )
     result = await run_loop(c, hour=11)
     assert result["targets"]["switch.driveway"] == 0
 
-
 # ---------------------------------------------------------------------------
 # Two EVSEs
 # ---------------------------------------------------------------------------
-
 
 async def test_two_evses_share_solar_current_evenly():
     """With two cars plugged in, available solar current is split evenly."""
@@ -310,12 +267,10 @@ async def test_two_evses_share_solar_current_evenly():
         },
         export_kw=-2.88,   # 2880 W / 240 V = 12 A → 6 A each
         battery_kw=0.0,
-        hour=11,
     )
     result = await run_loop(c, hour=11)
     assert result["targets"]["switch.driveway"] == 6
     assert result["targets"]["switch.garage"] == 6
-
 
 async def test_two_evses_neither_charges_when_solar_too_low_to_split():
     """If there isn't enough export to give each EVSE the 6 A minimum, neither charges."""
@@ -327,12 +282,10 @@ async def test_two_evses_neither_charges_when_solar_too_low_to_split():
         },
         export_kw=-2.0,   # 2000 W / 240 V = 8 A → 4 A each, below 6 A minimum
         battery_kw=0.0,
-        hour=11,
     )
     result = await run_loop(c, hour=11)
     assert result["targets"]["switch.driveway"] == 0
     assert result["targets"]["switch.garage"] == 0
-
 
 async def test_stopped_evse_does_not_consume_solar_budget():
     """A stopped EVSE doesn't reduce the current available to a solar-charging EVSE."""
@@ -344,12 +297,10 @@ async def test_stopped_evse_does_not_consume_solar_budget():
         },
         export_kw=-2.88,   # 2880 W / 240 V = 12 A — all goes to garage
         battery_kw=0.0,
-        hour=11,
     )
     result = await run_loop(c, hour=11)
     assert result["targets"]["switch.driveway"] == 0
     assert result["targets"]["switch.garage"] == 12
-
 
 async def test_evse_without_vehicle_does_not_consume_solar_budget():
     """An EVSE in excess-solar mode with no car plugged in is excluded from current
