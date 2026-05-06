@@ -214,19 +214,22 @@ async def test_set_evse_current_zero_calls_turn_off():
         "switch", "turn_off", {"entity_id": "switch.evse1"}, blocking=True
     )
 
-async def test_set_evse_current_nonzero_sets_rate_then_turns_on():
+async def test_set_evse_current_new_session_sets_rate_before_turn_on():
     c = make_coordinator()
     await c._set_evse_current("switch.evse1", 16)
-    assert c.hass.services.async_call.call_count == 2
-    c.hass.services.async_call.assert_any_call(
-        "emporia_vue",
-        "set_charger_current",
-        {"entity_id": "switch.evse1", "current": 16},
-        blocking=True,
-    )
-    c.hass.services.async_call.assert_any_call(
-        "switch", "turn_on", {"entity_id": "switch.evse1"}, blocking=True
-    )
+    calls = c.hass.services.async_call.call_args_list
+    assert len(calls) == 2
+    assert calls[0][0][:2] == ("emporia_vue", "set_charger_current")
+    assert calls[1][0][:2] == ("switch", "turn_on")
+
+async def test_set_evse_current_rate_change_turns_on_before_set_rate():
+    c = make_coordinator()
+    c._last_targets["switch.evse1"] = 12
+    await c._set_evse_current("switch.evse1", 16)
+    calls = c.hass.services.async_call.call_args_list
+    assert len(calls) == 2
+    assert calls[0][0][:2] == ("switch", "turn_on")
+    assert calls[1][0][:2] == ("emporia_vue", "set_charger_current")
 
 async def test_set_evse_current_deduplication_skips_call():
     c = make_coordinator()
@@ -318,10 +321,23 @@ async def test_control_loop_excess_solar_stops_outside_charging_window():
         result = await c._run_control_loop()
     assert result["targets"]["switch.evse1"] == 0
 
-async def test_control_loop_excess_solar_stops_when_powerwall_discharging():
+async def test_control_loop_excess_solar_deducts_battery_discharge_from_budget():
+    # export 3000W, battery discharging 1000W → available = 2000W → 8A (not 12A)
+    c = make_loop_coordinator(
+        export_kw=-3.0,
+        battery_kw=1.0,
+        modes={"switch.evse1": ChargeMode.EXCESS_SOLAR},
+    )
+    with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
+        dt.now.return_value = at(10)
+        result = await c._run_control_loop()
+    assert result["targets"]["switch.evse1"] == 8
+
+async def test_control_loop_excess_solar_stops_when_battery_drain_exceeds_solar():
+    # export 2000W, battery discharging 1000W → available = 1000W → 4A < min → 0
     c = make_loop_coordinator(
         export_kw=-2.0,
-        battery_kw=1.0,  # discharging
+        battery_kw=1.0,
         modes={"switch.evse1": ChargeMode.EXCESS_SOLAR},
     )
     with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:

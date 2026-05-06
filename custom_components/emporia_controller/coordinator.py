@@ -32,11 +32,9 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def _solar_skip_reason(in_charging_window: bool, powerwall_discharging: bool) -> str:
+def _solar_skip_reason(in_charging_window: bool) -> str:
     if not in_charging_window:
         return "outside charging window"
-    if powerwall_discharging:
-        return "powerwall discharging"
     return "no vehicle connected"
 
 class EmporiaCoordinator(DataUpdateCoordinator[dict]):
@@ -129,11 +127,10 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
                     skip_reasons[evse] = reason
 
             elif mode == ChargeMode.EXCESS_SOLAR:
-                if (in_charging_window and not powerwall_discharging
-                        and self._has_vehicle_connected(evse)):
+                if in_charging_window and self._has_vehicle_connected(evse):
                     solar_evses.append(evse)
                 else:
-                    reason = _solar_skip_reason(in_charging_window, powerwall_discharging)
+                    reason = _solar_skip_reason(in_charging_window)
                     _LOGGER.debug("%s excess_solar skipped: %s", evse, reason)
                     targets[evse] = 0
                     skip_reasons[evse] = reason
@@ -189,6 +186,15 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         except ValueError:
             return False
 
+    def _get_battery_discharge_watts(self) -> float:
+        state = self.hass.states.get(self._battery_power_sensor)
+        if state is None:
+            return 0.0
+        try:
+            return max(0.0, float(state.state) * 1000)
+        except ValueError:
+            return 0.0
+
     def _get_available_solar_watts(self, solar_evses: list[str]) -> float:
         # Solar budget = current site export + what our solar-mode EVSEs are already consuming.
         # Without reclaim, the site sensor drops to ~0 the moment charging starts, which would
@@ -202,10 +208,11 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
             reclaim = sum(
                 self._last_targets.get(evse, 0) * self._voltage for evse in solar_evses
             )
-            available = max(0.0, raw_export + reclaim)
+            battery_discharge = self._get_battery_discharge_watts()
+            available = max(0.0, raw_export + reclaim - battery_discharge)
             _LOGGER.debug(
-                "Solar budget: site_export=%.0fW reclaim=%.0fW available=%.0fW",
-                raw_export, reclaim, available,
+                "Solar budget: site_export=%.0fW reclaim=%.0fW battery_discharge=%.0fW available=%.0fW",
+                raw_export, reclaim, battery_discharge, available,
             )
             return available
         except ValueError:
@@ -230,18 +237,31 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         return DEFAULT_MAX_AMPS
 
     async def _set_evse_current(self, evse_entity: str, amps: int) -> None:
-        if self._last_targets.get(evse_entity) == amps:
+        previous = self._last_targets.get(evse_entity)
+        if previous == amps:
             return
 
-        previous = self._last_targets.get(evse_entity, "unset")
-        _LOGGER.info("%s charging rate: %s A → %s A", evse_entity, previous, amps)
+        _LOGGER.info(
+            "%s charging rate: %s A → %s A",
+            evse_entity, previous if previous is not None else "unset", amps,
+        )
         self._last_targets[evse_entity] = amps
 
         if amps == 0:
             await self.hass.services.async_call(
                 "switch", "turn_off", {"entity_id": evse_entity}, blocking=True
             )
-        else:
+        elif not previous:  # new session — configure rate before enabling
+            await self.hass.services.async_call(
+                "emporia_vue",
+                "set_charger_current",
+                {"entity_id": evse_entity, "current": amps},
+                blocking=True,
+            )
+            await self.hass.services.async_call(
+                "switch", "turn_on", {"entity_id": evse_entity}, blocking=True
+            )
+        else:  # rate change while already charging
             await self.hass.services.async_call(
                 "switch", "turn_on", {"entity_id": evse_entity}, blocking=True
             )
