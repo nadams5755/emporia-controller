@@ -38,7 +38,15 @@ class _Store:
         pass
 
 
-class _ButtonEntity:
+class _CoordinatorEntity:
+    _attr_name: str = ""
+    _attr_unique_id: str = ""
+
+    def __init__(self, coordinator):
+        self.coordinator = coordinator
+
+
+class _SwitchEntity:
     _attr_name: str = ""
     _attr_unique_id: str = ""
 
@@ -47,12 +55,13 @@ def _install_stubs() -> None:
     update_coordinator = MagicMock()
     update_coordinator.DataUpdateCoordinator = _DataUpdateCoordinator
     update_coordinator.UpdateFailed = _UpdateFailed
+    update_coordinator.CoordinatorEntity = _CoordinatorEntity
 
     storage = MagicMock()
     storage.Store = _Store
 
-    button_mod = MagicMock()
-    button_mod.ButtonEntity = _ButtonEntity
+    switch_mod = MagicMock()
+    switch_mod.SwitchEntity = _SwitchEntity
 
     dt_mod = MagicMock()
 
@@ -68,7 +77,7 @@ def _install_stubs() -> None:
             "homeassistant.util": MagicMock(),
             "homeassistant.util.dt": dt_mod,
             "homeassistant.components": MagicMock(),
-            "homeassistant.components.button": button_mod,
+            "homeassistant.components.switch": switch_mod,
         }
     )
 
