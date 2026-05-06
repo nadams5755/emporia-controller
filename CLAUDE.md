@@ -57,9 +57,21 @@ All entity IDs are user-configured at setup time (and reconfigurable via Setting
 - Stop: `switch.turn_off {entity_id}`
 - Set rate: `emporia_vue.set_charger_current {entity_id, current}` (min 6A, max 48A), then `switch.turn_on`
 
+## Development
+
+Requires Python 3.10+.
+
+| Command | Effect |
+|---|---|
+| `make test` | Run pylint then pytest (full CI check) |
+| `make lint` | Pylint only |
+| `make clean` | Delete the venv |
+
+Tests run without a live HA install — `tests/conftest.py` stubs out the entire `homeassistant` package. Pylint config is in `.pylintrc` (max line length 120, docstrings and HA import errors suppressed).
+
 ## Deployment
 
-HA credentials (URL + long-lived API token) are stored in `.ha_credentials` at the repo root (gitignored). Read them from there.
+HA credentials (URL + long-lived API token) are stored in `.ha_credentials` at the repo root (gitignored). Copy `.ha_credentials.template` and fill in the values to set it up. Read credentials from there before running any deploy commands.
 
 The integration is installed in HA via HACS and tracked by the update entity `update.emporia_evse_controller_update`. To deploy after pushing a commit:
 
