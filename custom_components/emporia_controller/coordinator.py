@@ -14,6 +14,7 @@ from .const import (
     CHARGING_WINDOW_END_HOUR,
     CHARGING_WINDOW_START_HOUR,
     CONF_BATTERY_POWER_SENSOR,
+    CONF_DEBUG_LOGGING,
     CONF_EVSE_ENTITIES,
     CONF_SITE_POWER_SENSOR,
     CONF_VOLTAGE,
@@ -29,6 +30,14 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _solar_skip_reason(in_charging_window: bool, powerwall_discharging: bool) -> str:
+    if not in_charging_window:
+        return "outside charging window"
+    if powerwall_discharging:
+        return "powerwall discharging"
+    return "no vehicle connected"
 
 class EmporiaCoordinator(DataUpdateCoordinator[dict]):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -47,6 +56,9 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         self._battery_power_sensor: str = config[CONF_BATTERY_POWER_SENSOR]
         self._voltage: int = config.get(CONF_VOLTAGE, DEFAULT_VOLTAGE)
         self._last_targets: dict[str, int] = {}
+        _LOGGER.setLevel(
+            logging.DEBUG if config.get(CONF_DEBUG_LOGGING, False) else logging.NOTSET
+        )
 
     async def async_load_state(self) -> None:
         data = await self._store.async_load()
@@ -81,6 +93,12 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         in_offpeak = CHARGING_WINDOW_START_HOUR <= hour < OFFPEAK_END_HOUR
 
         powerwall_discharging = self._is_powerwall_discharging()
+        export_watts = self._get_export_watts()
+
+        _LOGGER.debug(
+            "Control loop: hour=%d window=%s offpeak=%s pw_discharging=%s export=%.0fW",
+            hour, in_charging_window, in_offpeak, powerwall_discharging, export_watts,
+        )
 
         targets: dict[str, int] = {}
         solar_evses: list[str] = []
@@ -98,6 +116,8 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
                 if in_offpeak and not powerwall_discharging:
                     targets[evse] = self._get_max_amps(evse)
                 else:
+                    reason = "powerwall discharging" if powerwall_discharging else "outside off-peak window"
+                    _LOGGER.debug("%s full_speed_offpeak skipped: %s", evse, reason)
                     targets[evse] = 0
 
             elif mode == ChargeMode.EXCESS_SOLAR:
@@ -105,6 +125,10 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
                         and self._has_vehicle_connected(evse)):
                     solar_evses.append(evse)
                 else:
+                    _LOGGER.debug(
+                        "%s excess_solar skipped: %s", evse,
+                        _solar_skip_reason(in_charging_window, powerwall_discharging),
+                    )
                     targets[evse] = 0
 
         if solar_evses:
@@ -117,7 +141,7 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         return {
             "targets": targets,
             "powerwall_discharging": powerwall_discharging,
-            "export_watts": self._get_export_watts(),
+            "export_watts": export_watts,
         }
 
     def _allocate_solar_current(self, evses: list[str], export_watts: float) -> dict[str, int]:
@@ -125,6 +149,10 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         per_evse = available_amps // len(evses)
 
         if per_evse < MIN_CHARGE_AMPS:
+            _LOGGER.debug(
+                "Solar allocation: %.0fW / %dV / %d EVSE = %dA each — below %dA minimum, stopping all",
+                export_watts, self._voltage, len(evses), per_evse, MIN_CHARGE_AMPS,
+            )
             return {evse: 0 for evse in evses}
 
         return {evse: per_evse for evse in evses}
@@ -161,7 +189,12 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
             reclaim = sum(
                 self._last_targets.get(evse, 0) * self._voltage for evse in solar_evses
             )
-            return max(0.0, raw_export + reclaim)
+            available = max(0.0, raw_export + reclaim)
+            _LOGGER.debug(
+                "Solar budget: site_export=%.0fW reclaim=%.0fW available=%.0fW",
+                raw_export, reclaim, available,
+            )
+            return available
         except ValueError:
             return 0.0
 
