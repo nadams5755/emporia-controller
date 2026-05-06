@@ -70,6 +70,10 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
     async def _save_state(self) -> None:
         await self._store.async_save({"evse_modes": self._evse_modes})
 
+    @property
+    def voltage(self) -> int:
+        return self._voltage
+
     def get_mode(self, evse_entity: str) -> str:
         return self._evse_modes.get(evse_entity, ChargeMode.EXCESS_SOLAR)
 

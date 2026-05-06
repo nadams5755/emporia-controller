@@ -63,9 +63,12 @@ class EvseStatusSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict:
         data = self.coordinator.data or {}
+        target_amps = data.get("targets", {}).get(self._evse_entity)
+        target_kw = round(target_amps * self.coordinator.voltage / 1000, 2) if target_amps else None
         attrs: dict = {
             "mode": self.coordinator.get_mode(self._evse_entity),
-            "target_amps": data.get("targets", {}).get(self._evse_entity),
+            "target_amps": target_amps,
+            "target_kw": target_kw,
             "export_watts": data.get("export_watts"),
             "available_watts": data.get("available_watts"),
             "powerwall_discharging": data.get("powerwall_discharging"),
