@@ -4,10 +4,11 @@ from custom_components.emporia_controller.sensor import EvseStatusSensor
 from custom_components.emporia_controller.const import DOMAIN, ChargeMode
 
 
-def make_sensor(evse="switch.evse1", data=None, mode=ChargeMode.EXCESS_SOLAR):
+def make_sensor(evse="switch.evse1", data=None, mode=ChargeMode.EXCESS_SOLAR, voltage=240):
     coordinator = MagicMock()
     coordinator.data = data
     coordinator.get_mode = MagicMock(return_value=mode)
+    coordinator.voltage = voltage
     return EvseStatusSensor(coordinator, evse, "Driveway")
 
 
@@ -100,10 +101,27 @@ def test_attributes_powerwall_discharging():
     })
     assert s.extra_state_attributes["powerwall_discharging"] is True
 
+def test_attributes_target_kw_computed_from_amps_and_voltage():
+    s = make_sensor(
+        data={"targets": {"switch.evse1": 16}, "skip_reasons": {},
+              "export_watts": 0.0, "available_watts": 0.0, "powerwall_discharging": False},
+        voltage=240,
+    )
+    assert s.extra_state_attributes["target_kw"] == 3.84
+
+def test_attributes_target_kw_none_when_target_zero():
+    s = make_sensor(
+        data={"targets": {"switch.evse1": 0}, "skip_reasons": {"switch.evse1": "stopped"},
+              "export_watts": 0.0, "available_watts": 0.0, "powerwall_discharging": False},
+        mode=ChargeMode.STOPPED,
+    )
+    assert s.extra_state_attributes["target_kw"] is None
+
 def test_attributes_none_data_returns_nones():
     s = make_sensor(data=None)
     attrs = s.extra_state_attributes
     assert attrs["target_amps"] is None
+    assert attrs["target_kw"] is None
     assert attrs["export_watts"] is None
     assert "skip_reason" not in attrs
 
