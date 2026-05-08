@@ -5,6 +5,7 @@ MIN_CHARGE_AMPS = 6
 DEFAULT_MAX_AMPS = 48
 DEFAULT_VOLTAGE = 240
 BATTERY_DISCHARGE_THRESHOLD_KW = 0.1
+SOLAR_RATE_STEP_AMPS = 2  # max amps to increase per control loop iteration in solar mode
 
 # Charging allowed midnight–4pm local time (exclusive end)
 CHARGING_WINDOW_START_HOUR = 0

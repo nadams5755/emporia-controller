@@ -79,41 +79,68 @@ def at(hour):
 
 def test_allocate_single_evse_enough_power():
     c = make_coordinator()
-    # 2880 W / 240 V = 12 A
-    assert c._allocate_solar_current(["switch.evse1"], 2880.0) == {"switch.evse1": 12}
+    c._last_targets["switch.evse1"] = 10  # simulate ongoing session
+    # 2880 W / 240 V = 12 A; ramp cap: min(12, 10+2) = 12
+    assert c._allocate_solar_current(["switch.evse1"], 2880.0, False) == {"switch.evse1": 12}
 
 def test_allocate_floors_per_evse():
     c = make_coordinator()
-    # 3000 W / 240 V = 12 A; 12 // 1 = 12 (no rounding issue here)
-    # Use non-divisible wattage: 3100 W / 240 V = 12.9 → floor 12
-    assert c._allocate_solar_current(["switch.evse1"], 3100.0) == {"switch.evse1": 12}
+    c._last_targets["switch.evse1"] = 11  # simulate ongoing session
+    # 3100 W / 240 V = 12.9 → floor 12; ramp cap: min(12, 11+2) = 12
+    assert c._allocate_solar_current(["switch.evse1"], 3100.0, False) == {"switch.evse1": 12}
 
 def test_allocate_two_evses_split_evenly():
     c = make_coordinator(["switch.evse1", "switch.evse2"])
-    # 2880 W / 240 V = 12 A; 12 // 2 = 6 A each
-    result = c._allocate_solar_current(["switch.evse1", "switch.evse2"], 2880.0)
+    c._last_targets["switch.evse1"] = 6
+    c._last_targets["switch.evse2"] = 6
+    # 2880 W / 240 V = 12 A; 12 // 2 = 6 A each; ramp cap: min(6, 6+2) = 6
+    result = c._allocate_solar_current(["switch.evse1", "switch.evse2"], 2880.0, False)
     assert result == {"switch.evse1": 6, "switch.evse2": 6}
 
 def test_allocate_below_minimum_single_evse():
     c = make_coordinator()
-    # 1000 W / 240 V = 4 A < 6 A minimum → 0
-    assert c._allocate_solar_current(["switch.evse1"], 1000.0) == {"switch.evse1": 0}
+    # 1000 W / 240 V = 4 A < 6 A minimum, PW not discharging → stop
+    assert c._allocate_solar_current(["switch.evse1"], 1000.0, False) == {"switch.evse1": 0}
 
 def test_allocate_two_evses_split_below_minimum():
     c = make_coordinator(["switch.evse1", "switch.evse2"])
-    # 2400 W / 240 V = 10 A; 10 // 2 = 5 A < 6 A → 0 for all
-    result = c._allocate_solar_current(["switch.evse1", "switch.evse2"], 2400.0)
+    # 2400 W / 240 V = 10 A; 10 // 2 = 5 A < 6 A, PW not discharging → 0 for all
+    result = c._allocate_solar_current(["switch.evse1", "switch.evse2"], 2400.0, False)
     assert result == {"switch.evse1": 0, "switch.evse2": 0}
 
 def test_allocate_exactly_at_minimum():
     c = make_coordinator()
-    # 1440 W / 240 V = 6 A — exactly at minimum, should charge
-    assert c._allocate_solar_current(["switch.evse1"], 1440.0) == {"switch.evse1": 6}
+    # 1440 W / 240 V = 6 A — exactly at minimum; last=0 → start at MIN
+    assert c._allocate_solar_current(["switch.evse1"], 1440.0, False) == {"switch.evse1": 6}
 
 def test_allocate_custom_voltage():
     c = make_coordinator(voltage=120)
-    # 1440 W / 120 V = 12 A
-    assert c._allocate_solar_current(["switch.evse1"], 1440.0) == {"switch.evse1": 12}
+    c._last_targets["switch.evse1"] = 10  # simulate ongoing session
+    # 1440 W / 120 V = 12 A; ramp cap: min(12, 10+2) = 12
+    assert c._allocate_solar_current(["switch.evse1"], 1440.0, False) == {"switch.evse1": 12}
+
+def test_allocate_below_minimum_pw_discharging_floors_at_min():
+    c = make_coordinator()
+    c._last_targets["switch.evse1"] = 20
+    # 500 W → 2 A < 6 A, but PW is discharging → floor at 6 A
+    assert c._allocate_solar_current(["switch.evse1"], 500.0, True) == {"switch.evse1": 6}
+
+def test_allocate_ramp_up_from_zero():
+    c = make_coordinator()
+    # last=0 (fresh start) → always begin at MIN_CHARGE_AMPS regardless of available
+    assert c._allocate_solar_current(["switch.evse1"], 9600.0, False) == {"switch.evse1": 6}
+
+def test_allocate_ramp_up_step():
+    c = make_coordinator()
+    c._last_targets["switch.evse1"] = 8
+    # Available is 20 A but last was 8 → capped at 10 A (+2 step)
+    assert c._allocate_solar_current(["switch.evse1"], 4800.0, False) == {"switch.evse1": 10}
+
+def test_allocate_reduce_immediately():
+    c = make_coordinator()
+    c._last_targets["switch.evse1"] = 20
+    # Available drops to 14 A → reduce immediately, no ramp limit on decreases
+    assert c._allocate_solar_current(["switch.evse1"], 3360.0, False) == {"switch.evse1": 14}
 
 # ---------------------------------------------------------------------------
 # _is_powerwall_discharging
@@ -305,6 +332,7 @@ async def test_control_loop_excess_solar_charges_when_exporting():
         battery_kw=0.0,
         modes={"switch.evse1": ChargeMode.EXCESS_SOLAR},
     )
+    c._last_targets["switch.evse1"] = 6  # simulate already-charging session
     with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
         dt.now.return_value = at(10)
         result = await c._run_control_loop()
@@ -328,6 +356,7 @@ async def test_control_loop_excess_solar_deducts_battery_discharge_from_budget()
         battery_kw=1.0,
         modes={"switch.evse1": ChargeMode.EXCESS_SOLAR},
     )
+    c._last_targets["switch.evse1"] = 6  # simulate already-charging session
     with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
         dt.now.return_value = at(10)
         result = await c._run_control_loop()
@@ -382,6 +411,7 @@ async def test_control_loop_mixed_modes():
             "switch.evse3": ChargeMode.EXCESS_SOLAR,
         },
     )
+    c._last_targets["switch.evse3"] = 6  # simulate already-charging session
     with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
         dt.now.return_value = at(10)
         result = await c._run_control_loop()

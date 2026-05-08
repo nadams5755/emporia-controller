@@ -23,6 +23,7 @@ from .const import (
     DOMAIN,
     MIN_CHARGE_AMPS,
     OFFPEAK_END_HOUR,
+    SOLAR_RATE_STEP_AMPS,
     STORAGE_KEY,
     STORAGE_VERSION,
     UPDATE_INTERVAL_SECONDS,
@@ -137,7 +138,7 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
 
         if solar_evses:
             available_watts = self._get_available_solar_watts(solar_evses)
-            targets.update(self._allocate_solar_current(solar_evses, available_watts))
+            targets.update(self._allocate_solar_current(solar_evses, available_watts, powerwall_discharging))
             if not any(targets.get(e, 0) > 0 for e in solar_evses):
                 skip_reasons.update(dict.fromkeys(
                     solar_evses, f"insufficient solar ({available_watts:.0f} W available)"
@@ -154,18 +155,41 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
             "available_watts": available_watts,
         }
 
-    def _allocate_solar_current(self, evses: list[str], export_watts: float) -> dict[str, int]:
+    def _allocate_solar_current(
+        self, evses: list[str], export_watts: float, powerwall_discharging: bool
+    ) -> dict[str, int]:
         available_amps = int(export_watts / self._voltage)
         per_evse = available_amps // len(evses)
 
         if per_evse < MIN_CHARGE_AMPS:
+            any_was_charging = any(self._last_targets.get(e, 0) > 0 for e in evses)
+            if powerwall_discharging and any_was_charging:
+                # Charger was already running and PW compensated for marginal solar.
+                # Floor at minimum rather than stopping to avoid the off/on oscillation cycle.
+                _LOGGER.debug(
+                    "Solar allocation: %dA each — below minimum while PW discharging,"
+                    " flooring at %dA",
+                    per_evse, MIN_CHARGE_AMPS,
+                )
+                return {evse: MIN_CHARGE_AMPS for evse in evses}
             _LOGGER.debug(
                 "Solar allocation: %.0fW / %dV / %d EVSE = %dA each — below %dA minimum, stopping all",
                 export_watts, self._voltage, len(evses), per_evse, MIN_CHARGE_AMPS,
             )
             return {evse: 0 for evse in evses}
 
-        return {evse: per_evse for evse in evses}
+        # Ramp up gradually to avoid immediately overshooting available solar.
+        # Reductions are applied immediately; increases are capped at SOLAR_RATE_STEP_AMPS/cycle.
+        results = {}
+        for evse in evses:
+            last = self._last_targets.get(evse, 0)
+            if last == 0:
+                results[evse] = MIN_CHARGE_AMPS  # start at minimum when initiating a session
+            elif per_evse < last:
+                results[evse] = per_evse  # reduce immediately
+            else:
+                results[evse] = min(per_evse, last + SOLAR_RATE_STEP_AMPS)  # increase gradually
+        return results
 
     def _has_vehicle_connected(self, evse_entity: str) -> bool:
         state = self.hass.states.get(evse_entity)
