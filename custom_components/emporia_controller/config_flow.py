@@ -7,7 +7,9 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_BATTERY_POWER_SENSOR,
     CONF_DEBUG_LOGGING,
+    CONF_DISABLED,
     CONF_EVSE_ENTITIES,
+    CONF_RESET_STATE,
     CONF_SITE_POWER_SENSOR,
     CONF_VOLTAGE,
     DEFAULT_VOLTAGE,
@@ -46,6 +48,14 @@ def _build_schema(defaults: dict) -> vol.Schema:
             vol.Optional(
                 CONF_DEBUG_LOGGING,
                 default=defaults.get(CONF_DEBUG_LOGGING, False),
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_DISABLED,
+                default=defaults.get(CONF_DISABLED, False),
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_RESET_STATE,
+                default=defaults.get(CONF_RESET_STATE, False),
             ): selector.BooleanSelector(),
         }
     )
