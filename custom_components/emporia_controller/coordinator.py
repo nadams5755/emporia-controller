@@ -15,7 +15,9 @@ from .const import (
     CHARGING_WINDOW_START_HOUR,
     CONF_BATTERY_POWER_SENSOR,
     CONF_DEBUG_LOGGING,
+    CONF_DISABLED,
     CONF_EVSE_ENTITIES,
+    CONF_RESET_STATE,
     CONF_SITE_POWER_SENSOR,
     CONF_VOLTAGE,
     DEFAULT_MAX_AMPS,
@@ -54,15 +56,25 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         self._site_power_sensor: str = config[CONF_SITE_POWER_SENSOR]
         self._battery_power_sensor: str = config[CONF_BATTERY_POWER_SENSOR]
         self._voltage: int = config.get(CONF_VOLTAGE, DEFAULT_VOLTAGE)
+        self._disabled: bool = config.get(CONF_DISABLED, False)
         self._last_targets: dict[str, int] = {}
         _LOGGER.setLevel(
             logging.DEBUG if config.get(CONF_DEBUG_LOGGING, False) else logging.NOTSET
         )
 
     async def async_load_state(self) -> None:
-        data = await self._store.async_load()
-        if data:
-            self._evse_modes = data.get("evse_modes", {})
+        config = {**self._entry.data, **self._entry.options}
+        if config.get(CONF_RESET_STATE, False):
+            _LOGGER.info("Resetting persisted state as requested by configuration")
+            await self._store.async_remove()
+            self.hass.config_entries.async_update_entry(
+                self._entry,
+                options={**self._entry.options, CONF_RESET_STATE: False},
+            )
+        else:
+            data = await self._store.async_load()
+            if data:
+                self._evse_modes = data.get("evse_modes", {})
         for evse in self._evse_entities:
             self._evse_modes.setdefault(evse, ChargeMode.EXCESS_SOLAR)
 
@@ -84,6 +96,9 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         await self.async_request_refresh()
 
     async def _async_update_data(self) -> dict:
+        if self._disabled:
+            _LOGGER.debug("Controller disabled — skipping control loop")
+            return {}
         try:
             return await self._run_control_loop()
         except Exception as err:

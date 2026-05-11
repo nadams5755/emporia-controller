@@ -19,6 +19,8 @@ CONF_SITE_POWER_SENSOR = "site_power_sensor"
 CONF_BATTERY_POWER_SENSOR = "battery_power_sensor"
 CONF_VOLTAGE = "voltage"
 CONF_DEBUG_LOGGING = "debug_logging"
+CONF_RESET_STATE = "reset_state"
+CONF_DISABLED = "disabled"
 
 STORAGE_KEY = f"{DOMAIN}.state"
 STORAGE_VERSION = 1
