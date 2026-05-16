@@ -1,8 +1,8 @@
-# emporia-contorller
+# emporia-controller
 
 ## Installation with HACS
 
-Requires the [ha-emporia-vue custom component](https://github.com/magico13/ha-emporia-vue).  i've only tested this with i[the tesla powerwall integration](https://www.home-assistant.io/integrations/powerwall/)  but i don't see why it wouldn't work with other sources.
+Requires the [ha-emporia-vue custom component](https://github.com/magico13/ha-emporia-vue).  i've only tested this with [the tesla powerwall integration](https://www.home-assistant.io/integrations/powerwall/)  but i don't see why it wouldn't work with other sources.
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/custom-components/hacs)
 
@@ -29,7 +29,19 @@ Configuration is done directly in the Home Assistant UI, no manual config file e
 2. Select `Integrations`
 3. Click the `+` button at the bottom
 4. Search for "Emporia EVSE Controller" and add it. If you do not see it in the list, ensure that you have installed the integration.
-5. Add some steps and screenshots about adding your EVSEs (evse_entities), Site Power (site_power_sensor), and Battery power (battery_power_sensor).
+5. Fill in the configuration fields:
+
+| Field | Description |
+|---|---|
+| **EVSE charger entities** | The Emporia switch entities for each EV charger (e.g. `switch.garage`, `switch.driveway`) |
+| **Site power sensor** | Sensor reporting total site power in kW — negative values mean exporting to the grid (excess solar) |
+| **Battery power sensor** | Sensor reporting battery power in kW — positive values mean the battery is discharging |
+| **Circuit voltage** | Voltage of the EV charger circuits (typically 240V for residential) |
+| **Enable debug logging** | Log detailed controller decisions to the Home Assistant log |
+| **Disable controller** | Pause all controller activity without removing the integration |
+| **Reset charge mode state** | Clear saved charge mode for all EVSEs and return to defaults on next restart |
+
+The last three fields are primarily useful after initial setup and are accessible at any time via **Settings → Devices & Services → Emporia EVSE Controller → Configure**.
 
 ## tl;dr
 
@@ -38,7 +50,7 @@ Definitions:
 
 Emporia EVSE controller that has the following behavior:
 * default behavior for the EVSEs is to charge vehicles on excess solar
-* default behavior detects when the powerwalls are discharging and disables EV charging
+* default behavior detects when the powerwalls are discharging and ramp down the charge rate until the powerwalls stop discharging or the charge rate is zero.
 * only charges the vehicles between midnight and 4pm local-time
 * integrates with home assistant and subsequently homekit
 * integrates with the tesla powerwall plugin in home assistant
@@ -48,7 +60,7 @@ Emporia EVSE controller that has the following behavior:
 * if no state/behavior can be retained between application restarts, the controller should follow the defualt behavior above
 
 Edge case behavior:
-* if the system is discharging the powerwalls and the time is before 4pm, EVSEs should stop charging
+* if the system is discharging the powerwalls and the time is before 4pm, EVSEs should ramp down the charge rate until the powerwalls stop discharging or the charge rate is zero
 * if the vehicle is charging from excess solar and a user requests full-speed charging, then the EVSEs should change to that setting.
 * if more than one EVSE is connected to more than one vehicle and offering a charge to those vehicles, the available current should be split evenly between the remaining EVSEs
 * if one vehicle is asking for less current than offered by an EVSE, it should offer that difference in current to other EVSEs
