@@ -43,9 +43,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Current allocation: total available amps ÷ active EVSE count, floored at 6A minimum per EVSE
 - User controls exposed as native HA entities
 
-## Home Assistant Entities
+## Configuration Options
 
-All entity IDs are user-configured at setup time (and reconfigurable via Settings → Devices & Services → Configure). No entity IDs are hardcoded.
+Set at install time and reconfigurable via Settings → Devices & Services → Emporia EVSE Controller → Configure. No entity IDs are hardcoded.
+
+| Option | Key | Description |
+|---|---|---|
+| EVSE charger entities | `evse_entities` | Emporia switch entities for each EV charger |
+| Site power sensor | `site_power_sensor` | kW sensor; negative = exporting to grid (excess solar) |
+| Battery power sensor | `battery_power_sensor` | kW sensor; positive = discharging |
+| Circuit voltage | `voltage` | Charger circuit voltage (default 240V) |
+| Enable debug logging | `debug_logging` | Log detailed controller decisions to HA log |
+| Disable controller | `disabled` | Pause all activity without removing the integration |
+| Reset charge mode state | `reset_state` | Clear persisted charge mode; returns to defaults on next restart |
+
+## Home Assistant Entities
 
 **EVSEs:** Emporia EVSE switch entities — controlled via `switch.turn_on/off` + `emporia_vue.set_charger_current`. Max charge rate is read from the `max_charging_rate` attribute on the switch entity.
 

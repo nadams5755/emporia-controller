@@ -4,10 +4,47 @@
       "user": {
         "title": "Emporia EVSE Controller",
         "data": {
-          "evse_entities": "EVSE switch entities (e.g. switch.garage, switch.driveway)",
-          "site_power_sensor": "Site power sensor (kW, negative = exporting to grid)",
-          "battery_power_sensor": "Battery power sensor (kW, positive = discharging)",
-          "voltage": "Circuit voltage (V)"
+          "evse_entities": "EVSE charger entities",
+          "site_power_sensor": "Site power sensor",
+          "battery_power_sensor": "Battery power sensor",
+          "voltage": "Circuit voltage",
+          "debug_logging": "Enable debug logging",
+          "disabled": "Disable controller",
+          "reset_state": "Reset charge mode state"
+        },
+        "data_description": {
+          "evse_entities": "Emporia switch entities for each EV charger",
+          "site_power_sensor": "Reports total site power in kW — negative means exporting to the grid (excess solar)",
+          "battery_power_sensor": "Reports battery power in kW — positive means the battery is discharging",
+          "voltage": "Voltage of the EV charger circuits (typically 240V for residential)",
+          "debug_logging": "Log detailed controller decisions to the Home Assistant log",
+          "disabled": "Pause all controller activity without removing the integration",
+          "reset_state": "Clear saved charge mode for all EVSEs and return to defaults on next restart"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Emporia EVSE Controller",
+        "data": {
+          "evse_entities": "EVSE charger entities",
+          "site_power_sensor": "Site power sensor",
+          "battery_power_sensor": "Battery power sensor",
+          "voltage": "Circuit voltage",
+          "debug_logging": "Enable debug logging",
+          "disabled": "Disable controller",
+          "reset_state": "Reset charge mode state"
+        },
+        "data_description": {
+          "evse_entities": "Emporia switch entities for each EV charger",
+          "site_power_sensor": "Reports total site power in kW — negative means exporting to the grid (excess solar)",
+          "battery_power_sensor": "Reports battery power in kW — positive means the battery is discharging",
+          "voltage": "Voltage of the EV charger circuits (typically 240V for residential)",
+          "debug_logging": "Log detailed controller decisions to the Home Assistant log",
+          "disabled": "Pause all controller activity without removing the integration",
+          "reset_state": "Clear saved charge mode for all EVSEs and return to defaults on next restart"
         }
       }
     }
