@@ -241,13 +241,15 @@ async def test_set_evse_current_zero_calls_turn_off():
         "switch", "turn_off", {"entity_id": "switch.evse1"}, blocking=True
     )
 
-async def test_set_evse_current_new_session_sets_rate_before_turn_on():
+async def test_set_evse_current_new_session_turns_on_before_set_rate():
+    # emporia_vue ignores set_charger_current while the switch is off, so
+    # we must turn on first and then set the rate.
     c = make_coordinator()
     await c._set_evse_current("switch.evse1", 16)
     calls = c.hass.services.async_call.call_args_list
     assert len(calls) == 2
-    assert calls[0][0][:2] == ("emporia_vue", "set_charger_current")
-    assert calls[1][0][:2] == ("switch", "turn_on")
+    assert calls[0][0][:2] == ("switch", "turn_on")
+    assert calls[1][0][:2] == ("emporia_vue", "set_charger_current")
 
 async def test_set_evse_current_rate_change_turns_on_before_set_rate():
     c = make_coordinator()
