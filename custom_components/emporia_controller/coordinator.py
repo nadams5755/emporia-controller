@@ -303,23 +303,17 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
             await self.hass.services.async_call(
                 "switch", "turn_off", {"entity_id": evse_entity}, blocking=True
             )
-        elif not previous:  # new session — configure rate before enabling
-            await self.hass.services.async_call(
-                "emporia_vue",
-                "set_charger_current",
-                {"entity_id": evse_entity, "current": amps},
-                blocking=True,
-            )
-            await self.hass.services.async_call(
-                "switch", "turn_on", {"entity_id": evse_entity}, blocking=True
-            )
-        else:  # rate change while already charging
-            await self.hass.services.async_call(
-                "switch", "turn_on", {"entity_id": evse_entity}, blocking=True
-            )
-            await self.hass.services.async_call(
-                "emporia_vue",
-                "set_charger_current",
-                {"entity_id": evse_entity, "current": amps},
-                blocking=True,
-            )
+            return
+
+        # Turn on before setting current. emporia_vue ignores set_charger_current
+        # while the switch is off — the EVSE retains its previous "on" rate when
+        # later enabled (ha-emporia-vue issue #268).
+        await self.hass.services.async_call(
+            "switch", "turn_on", {"entity_id": evse_entity}, blocking=True
+        )
+        await self.hass.services.async_call(
+            "emporia_vue",
+            "set_charger_current",
+            {"entity_id": evse_entity, "current": amps},
+            blocking=True,
+        )
