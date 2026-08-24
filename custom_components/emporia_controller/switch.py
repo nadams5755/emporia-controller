@@ -17,7 +17,6 @@ _MODES: list[tuple[str, str]] = [
     (ChargeMode.EXCESS_SOLAR, "Excess Solar Charge"),
     (ChargeMode.FULL_SPEED_OFFPEAK, "Off-Peak Full Speed Charge"),
     (ChargeMode.OVERRIDE, "Full Speed Charge Now"),
-    (ChargeMode.STOPPED, "Stop Charging"),
 ]
 
 def _evse_friendly_name(hass: HomeAssistant, evse_entity: str) -> str:

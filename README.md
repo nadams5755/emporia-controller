@@ -69,7 +69,8 @@ For each emporia EVSE in home assistant, it provides the following buttons/contr
 * charge at full speed off-peak hours between midnight and 3pm
 * charge at full speed now regardless of timeframe (an override)
 * charge on excess solar
-* stop all current charging sessions
+
+There is no separate "stop charging" control — the EVSE's own switch entity is already stateful, and the controller re-asserts its computed charge state every control loop cycle, so a manual toggle of that switch won't stick. To hand control of the switches back to Home Assistant/HomeKit directly, use the **Disable controller** option, which pauses all controller activity.
 
 ## Running the tests
 

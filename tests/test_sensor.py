@@ -28,13 +28,6 @@ def test_native_value_idle_when_evse_not_in_targets():
     s = make_sensor(data={"targets": {}, "skip_reasons": {}})
     assert s.native_value == "idle"
 
-def test_native_value_stopped_for_stopped_mode():
-    s = make_sensor(
-        data={"targets": {"switch.evse1": 0}, "skip_reasons": {"switch.evse1": "stopped"}},
-        mode=ChargeMode.STOPPED,
-    )
-    assert s.native_value == "stopped"
-
 def test_native_value_idle_when_target_zero_and_mode_is_solar():
     s = make_sensor(
         data={"targets": {"switch.evse1": 0}, "skip_reasons": {"switch.evse1": "outside charging window"}},
@@ -111,9 +104,9 @@ def test_attributes_target_kw_computed_from_amps_and_voltage():
 
 def test_attributes_target_kw_none_when_target_zero():
     s = make_sensor(
-        data={"targets": {"switch.evse1": 0}, "skip_reasons": {"switch.evse1": "stopped"},
+        data={"targets": {"switch.evse1": 0}, "skip_reasons": {"switch.evse1": "outside charging window"},
               "export_watts": 0.0, "available_watts": 0.0, "powerwall_discharging": False},
-        mode=ChargeMode.STOPPED,
+        mode=ChargeMode.EXCESS_SOLAR,
     )
     assert s.extra_state_attributes["target_kw"] is None
 

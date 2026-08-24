@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_EVSE_ENTITIES, DOMAIN, ChargeMode
+from .const import CONF_EVSE_ENTITIES, DOMAIN
 from .coordinator import EmporiaCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,13 +51,8 @@ class EvseStatusSensor(CoordinatorEntity, SensorEntity):
     def native_value(self) -> str:
         data = self.coordinator.data or {}
         target = data.get("targets", {}).get(self._evse_entity)
-        if target is None:
-            return "idle"
-        if target > 0:
+        if target:
             return "charging"
-        mode = self.coordinator.get_mode(self._evse_entity)
-        if mode == ChargeMode.STOPPED:
-            return "stopped"
         return "idle"
 
     @property

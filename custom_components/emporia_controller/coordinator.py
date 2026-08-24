@@ -34,6 +34,8 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+_VALID_MODES = {ChargeMode.EXCESS_SOLAR, ChargeMode.FULL_SPEED_OFFPEAK, ChargeMode.OVERRIDE}
+
 
 def _solar_skip_reason(in_charging_window: bool) -> str:
     if not in_charging_window:
@@ -76,7 +78,10 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
             if data:
                 self._evse_modes = data.get("evse_modes", {})
         for evse in self._evse_entities:
-            self._evse_modes.setdefault(evse, ChargeMode.EXCESS_SOLAR)
+            # Also normalizes modes retired in a later version (e.g. the removed
+            # "stopped" mode) back to the default instead of leaving them unmanaged.
+            if self._evse_modes.get(evse) not in _VALID_MODES:
+                self._evse_modes[evse] = ChargeMode.EXCESS_SOLAR
 
     async def _save_state(self) -> None:
         await self._store.async_save({"evse_modes": self._evse_modes})
@@ -126,11 +131,7 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         for evse in self._evse_entities:
             mode = self._evse_modes.get(evse, ChargeMode.EXCESS_SOLAR)
 
-            if mode == ChargeMode.STOPPED:
-                targets[evse] = 0
-                skip_reasons[evse] = "stopped"
-
-            elif mode == ChargeMode.OVERRIDE:
+            if mode == ChargeMode.OVERRIDE:
                 targets[evse] = self._get_max_amps(evse)
 
             elif mode == ChargeMode.FULL_SPEED_OFFPEAK:
