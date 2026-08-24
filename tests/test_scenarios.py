@@ -269,21 +269,6 @@ async def test_override_charges_even_when_powerwall_is_discharging():
     assert result["targets"]["switch.driveway"] == 48
 
 # ---------------------------------------------------------------------------
-# "Stop Charging" button
-# ---------------------------------------------------------------------------
-
-async def test_stop_charging_halts_even_with_abundant_solar():
-    """'Stop Charging' always results in 0 amps regardless of solar or time."""
-    c = scenario(
-        evse_entities=["switch.driveway"],
-        modes={"switch.driveway": ChargeMode.STOPPED},
-        export_kw=-10.0,   # tonnes of solar
-        battery_kw=0.0,
-    )
-    result = await run_loop(c, hour=11)
-    assert result["targets"]["switch.driveway"] == 0
-
-# ---------------------------------------------------------------------------
 # Two EVSEs
 # ---------------------------------------------------------------------------
 
@@ -317,12 +302,14 @@ async def test_two_evses_neither_charges_when_solar_too_low_to_split():
     assert result["targets"]["switch.driveway"] == 0
     assert result["targets"]["switch.garage"] == 0
 
-async def test_stopped_evse_does_not_consume_solar_budget():
-    """A stopped EVSE doesn't reduce the current available to a solar-charging EVSE."""
+async def test_non_solar_evse_does_not_consume_solar_budget():
+    """An EVSE in a non-solar mode doesn't reduce the current available to a
+    solar-charging EVSE — only EVSEs actively drawing solar current factor into
+    the budget's reclaim calculation."""
     c = scenario(
         evse_entities=["switch.driveway", "switch.garage"],
         modes={
-            "switch.driveway": ChargeMode.STOPPED,
+            "switch.driveway": ChargeMode.OVERRIDE,
             "switch.garage": ChargeMode.EXCESS_SOLAR,
         },
         export_kw=-2.88,   # 2880 W / 240 V = 12 A — all goes to garage
@@ -330,7 +317,7 @@ async def test_stopped_evse_does_not_consume_solar_budget():
     )
     c._last_targets["switch.garage"] = 10  # simulate ongoing session
     result = await run_loop(c, hour=11)
-    assert result["targets"]["switch.driveway"] == 0
+    assert result["targets"]["switch.driveway"] == 48
     assert result["targets"]["switch.garage"] == 12
 
 async def test_evse_without_vehicle_does_not_consume_solar_budget():

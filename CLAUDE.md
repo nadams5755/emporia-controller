@@ -19,7 +19,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 1. Charge at full speed off-peak (midnight–3pm)
 2. Charge at full speed now (override — ignores time/solar)
 3. Charge on excess solar (default)
-4. Stop all charging sessions
+
+No dedicated "stop" control: the EVSE's own switch entity is already stateful, and the controller re-asserts its computed state every control loop cycle, so a manual toggle won't stick. Use the `disabled` config option to pause the controller and hand switches back to manual/native control.
 
 ### Edge Cases
 - Powerwall discharging + before 4pm → stop EVSEs
@@ -39,7 +40,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Home Assistant custom component** (Python). Lives in `custom_components/emporia_controller/`.
 
 - Async control loop (15s minimum interval) reads Powerwall state + grid export sensor, computes target current, calls Emporia EVSE service
-- State machine per EVSE (`excess_solar` / `full_speed` / `override` / `stopped`) persisted via HA `.storage` helper
+- State machine per EVSE (`excess_solar` / `full_speed_offpeak` / `override`) persisted via HA `.storage` helper
 - Current allocation: total available amps ÷ active EVSE count, floored at 6A minimum per EVSE
 - User controls exposed as native HA entities
 

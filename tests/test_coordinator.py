@@ -281,13 +281,6 @@ async def test_set_evse_current_change_from_previous_calls_service():
 # _run_control_loop — mode logic
 # ---------------------------------------------------------------------------
 
-async def test_control_loop_stopped_mode():
-    c = make_loop_coordinator(modes={"switch.evse1": ChargeMode.STOPPED})
-    with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
-        dt.now.return_value = at(10)
-        result = await c._run_control_loop()
-    assert result["targets"]["switch.evse1"] == 0
-
 async def test_control_loop_override_ignores_time_and_powerwall():
     c = make_loop_coordinator(
         battery_kw=2.0,  # powerwall discharging
@@ -402,24 +395,22 @@ async def test_control_loop_two_solar_evses_split_current():
     assert result["targets"]["switch.evse2"] == 6
 
 async def test_control_loop_mixed_modes():
-    evses = ["switch.evse1", "switch.evse2", "switch.evse3"]
+    evses = ["switch.evse1", "switch.evse2"]
     c = make_loop_coordinator(
         export_kw=-2.0,
         battery_kw=0.0,
         evse_entities=evses,
         modes={
-            "switch.evse1": ChargeMode.STOPPED,
-            "switch.evse2": ChargeMode.OVERRIDE,
-            "switch.evse3": ChargeMode.EXCESS_SOLAR,
+            "switch.evse1": ChargeMode.OVERRIDE,
+            "switch.evse2": ChargeMode.EXCESS_SOLAR,
         },
     )
-    c._last_targets["switch.evse3"] = 6  # simulate already-charging session
+    c._last_targets["switch.evse2"] = 6  # simulate already-charging session
     with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
         dt.now.return_value = at(10)
         result = await c._run_control_loop()
-    assert result["targets"]["switch.evse1"] == 0
-    assert result["targets"]["switch.evse2"] == 48
-    assert result["targets"]["switch.evse3"] == 8  # 2000 W / 240 V = 8 A (sole solar EVSE)
+    assert result["targets"]["switch.evse1"] == 48
+    assert result["targets"]["switch.evse2"] == 8  # 2000 W / 240 V = 8 A (sole solar EVSE)
 
 async def test_control_loop_returns_powerwall_and_export_state():
     c = make_loop_coordinator(export_kw=-1.0, battery_kw=0.5)
@@ -430,14 +421,6 @@ async def test_control_loop_returns_powerwall_and_export_state():
     assert result["export_watts"] == pytest.approx(1000.0)
     assert "skip_reasons" in result
     assert "available_watts" in result
-
-
-async def test_control_loop_skip_reason_stopped():
-    c = make_loop_coordinator(modes={"switch.evse1": ChargeMode.STOPPED})
-    with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
-        dt.now.return_value = at(10)
-        result = await c._run_control_loop()
-    assert result["skip_reasons"]["switch.evse1"] == "stopped"
 
 
 async def test_control_loop_skip_reason_offpeak_outside_window():
@@ -489,7 +472,7 @@ async def test_control_loop_available_watts_set_for_solar_evses():
 
 
 async def test_control_loop_available_watts_zero_when_no_solar_evses():
-    c = make_loop_coordinator(modes={"switch.evse1": ChargeMode.STOPPED})
+    c = make_loop_coordinator(modes={"switch.evse1": ChargeMode.OVERRIDE})
     with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
         dt.now.return_value = at(10)
         result = await c._run_control_loop()
@@ -508,9 +491,15 @@ async def test_load_state_defaults_to_excess_solar_when_no_data():
 
 async def test_load_state_restores_persisted_modes():
     c = make_coordinator(["switch.evse1"])
-    c._store.async_load.return_value = {"evse_modes": {"switch.evse1": ChargeMode.STOPPED}}
+    c._store.async_load.return_value = {"evse_modes": {"switch.evse1": ChargeMode.OVERRIDE}}
     await c.async_load_state()
-    assert c._evse_modes["switch.evse1"] == ChargeMode.STOPPED
+    assert c._evse_modes["switch.evse1"] == ChargeMode.OVERRIDE
+
+async def test_load_state_normalizes_retired_mode_to_default():
+    c = make_coordinator(["switch.evse1"])
+    c._store.async_load.return_value = {"evse_modes": {"switch.evse1": "stopped"}}
+    await c.async_load_state()
+    assert c._evse_modes["switch.evse1"] == ChargeMode.EXCESS_SOLAR
 
 async def test_load_state_defaults_missing_evses():
     c = make_coordinator(["switch.evse1", "switch.evse2"])
@@ -525,8 +514,8 @@ def test_get_mode_defaults_unknown_evse():
 
 def test_get_mode_returns_stored_mode():
     c = make_coordinator()
-    c._evse_modes["switch.evse1"] = ChargeMode.STOPPED
-    assert c.get_mode("switch.evse1") == ChargeMode.STOPPED
+    c._evse_modes["switch.evse1"] = ChargeMode.OVERRIDE
+    assert c.get_mode("switch.evse1") == ChargeMode.OVERRIDE
 
 async def test_set_mode_updates_evse_mode():
     c = make_coordinator()
@@ -536,7 +525,7 @@ async def test_set_mode_updates_evse_mode():
 
 async def test_set_mode_persists_state():
     c = make_coordinator()
-    await c.set_mode("switch.evse1", ChargeMode.STOPPED)
+    await c.set_mode("switch.evse1", ChargeMode.OVERRIDE)
     c._store.async_save.assert_called_once_with(
         {"evse_modes": c._evse_modes}
     )

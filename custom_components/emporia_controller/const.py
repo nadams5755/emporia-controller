@@ -29,4 +29,3 @@ class ChargeMode:
     EXCESS_SOLAR = "excess_solar"
     FULL_SPEED_OFFPEAK = "full_speed_offpeak"
     OVERRIDE = "override"
-    STOPPED = "stopped"
