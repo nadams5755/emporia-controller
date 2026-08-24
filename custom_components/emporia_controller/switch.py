@@ -5,6 +5,7 @@ import logging
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -37,6 +38,19 @@ async def async_setup_entry(
         for mode, label in _MODES
     ]
     async_add_entities(entities)
+    _remove_stale_switches(hass, entry, {e._attr_unique_id for e in entities})
+
+def _remove_stale_switches(hass: HomeAssistant, entry: ConfigEntry, valid_unique_ids: set[str]) -> None:
+    """Remove switch entities left behind by a retired mode (e.g. "stopped").
+
+    HA doesn't drop entities from the registry just because a platform stops
+    returning them, so without this a removed mode's switch lingers forever.
+    """
+    registry = er.async_get(hass)
+    for reg_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if reg_entry.domain == "switch" and reg_entry.unique_id not in valid_unique_ids:
+            _LOGGER.info("Removing stale switch entity from a retired mode: %s", reg_entry.entity_id)
+            registry.async_remove(reg_entry.entity_id)
 
 class EvseModeSwitch(CoordinatorEntity, SwitchEntity):
     def __init__(

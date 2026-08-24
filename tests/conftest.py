@@ -58,6 +58,11 @@ def _install_stubs() -> None:
     storage = MagicMock()
     storage.Store = _Store
 
+    entity_registry = MagicMock()
+
+    helpers = MagicMock()
+    helpers.entity_registry = entity_registry
+
     switch_mod = MagicMock()
     switch_mod.SwitchEntity = _SwitchEntity
 
@@ -71,10 +76,11 @@ def _install_stubs() -> None:
             "homeassistant": MagicMock(),
             "homeassistant.config_entries": MagicMock(),
             "homeassistant.core": MagicMock(),
-            "homeassistant.helpers": MagicMock(),
+            "homeassistant.helpers": helpers,
             "homeassistant.helpers.storage": storage,
             "homeassistant.helpers.update_coordinator": update_coordinator,
             "homeassistant.helpers.entity_platform": MagicMock(),
+            "homeassistant.helpers.entity_registry": entity_registry,
             "homeassistant.util": MagicMock(),
             "homeassistant.util.dt": dt_mod,
             "homeassistant.components": MagicMock(),

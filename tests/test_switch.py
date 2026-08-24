@@ -1,7 +1,7 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
-from custom_components.emporia_controller.switch import _evse_friendly_name, EvseModeSwitch
+from custom_components.emporia_controller.switch import _evse_friendly_name, _remove_stale_switches, EvseModeSwitch
 from custom_components.emporia_controller.const import DOMAIN, ChargeMode
 
 def make_state(value, attributes=None):
@@ -16,6 +16,13 @@ def make_switch(mode=ChargeMode.EXCESS_SOLAR, label="Excess Solar Charge", evse_
     coordinator.get_mode = MagicMock(return_value=current_mode if current_mode is not None else mode)
     sw = EvseModeSwitch(coordinator, "switch.evse1", mode, label, evse_name)
     return sw
+
+def make_registry_entry(domain, unique_id, entity_id):
+    reg_entry = MagicMock()
+    reg_entry.domain = domain
+    reg_entry.unique_id = unique_id
+    reg_entry.entity_id = entity_id
+    return reg_entry
 
 # ---------------------------------------------------------------------------
 # _evse_friendly_name
@@ -125,3 +132,50 @@ async def test_turn_off_is_noop():
     sw = make_switch(mode=ChargeMode.OVERRIDE)
     await sw.async_turn_off()
     sw.coordinator.set_mode.assert_not_called()
+
+# ---------------------------------------------------------------------------
+# _remove_stale_switches
+# ---------------------------------------------------------------------------
+
+def test_remove_stale_switches_removes_unmatched_switch_entities():
+    hass = MagicMock()
+    entry = MagicMock()
+    entry.entry_id = "entry1"
+    registry = MagicMock()
+    stale = make_registry_entry("switch", f"{DOMAIN}_switch_evse1_stopped", "switch.evse1_stop_charging")
+    valid = make_registry_entry("switch", f"{DOMAIN}_switch_evse1_override", "switch.evse1_override")
+
+    with patch("custom_components.emporia_controller.switch.er") as er_mock:
+        er_mock.async_get.return_value = registry
+        er_mock.async_entries_for_config_entry.return_value = [stale, valid]
+        _remove_stale_switches(hass, entry, {f"{DOMAIN}_switch_evse1_override"})
+
+    registry.async_remove.assert_called_once_with("switch.evse1_stop_charging")
+
+def test_remove_stale_switches_ignores_non_switch_domain():
+    hass = MagicMock()
+    entry = MagicMock()
+    entry.entry_id = "entry1"
+    registry = MagicMock()
+    status_sensor = make_registry_entry("sensor", f"{DOMAIN}_switch_evse1_status", "sensor.evse1_status")
+
+    with patch("custom_components.emporia_controller.switch.er") as er_mock:
+        er_mock.async_get.return_value = registry
+        er_mock.async_entries_for_config_entry.return_value = [status_sensor]
+        _remove_stale_switches(hass, entry, set())
+
+    registry.async_remove.assert_not_called()
+
+def test_remove_stale_switches_leaves_valid_entities_alone():
+    hass = MagicMock()
+    entry = MagicMock()
+    entry.entry_id = "entry1"
+    registry = MagicMock()
+    valid = make_registry_entry("switch", f"{DOMAIN}_switch_evse1_override", "switch.evse1_override")
+
+    with patch("custom_components.emporia_controller.switch.er") as er_mock:
+        er_mock.async_get.return_value = registry
+        er_mock.async_entries_for_config_entry.return_value = [valid]
+        _remove_stale_switches(hass, entry, {f"{DOMAIN}_switch_evse1_override"})
+
+    registry.async_remove.assert_not_called()
