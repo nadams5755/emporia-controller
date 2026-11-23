@@ -41,6 +41,7 @@ No dedicated "stop" control: the EVSE's own switch entity is already stateful, a
 **Home Assistant custom component** (Python). Lives in `custom_components/emporia_controller/`.
 
 - Async control loop (15s minimum interval) reads Powerwall state + grid export sensor, computes target current, calls Emporia EVSE service
+- Control loop is a no-op until HA has fully started (`async_at_started`), so Powerwall sensors / EVSE switches from other integrations exist before they're read or commanded
 - State machine per EVSE (`excess_solar` / `full_speed_offpeak` / `super_offpeak` / `override`) persisted via HA `.storage` helper
 - Current allocation: total available amps ÷ active EVSE count, floored at 6A minimum per EVSE
 - User controls exposed as native HA entities

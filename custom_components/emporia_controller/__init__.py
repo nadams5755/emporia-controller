@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.start import async_at_started
 
 from .const import DOMAIN
 from .coordinator import EmporiaCoordinator
@@ -15,6 +16,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # Hold off controlling EVSEs until HA has fully started, so the Powerwall sensors and
+    # Emporia switches exist. Fires right away when HA is already running (e.g. a reload).
+    entry.async_on_unload(async_at_started(hass, coordinator.async_handle_ha_started))
     # Reload when options change so reconfigured values (e.g. super off-peak hours)
     # take effect without restarting Home Assistant.
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))

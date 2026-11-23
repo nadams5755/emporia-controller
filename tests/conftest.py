@@ -82,6 +82,7 @@ def _install_stubs() -> None:
             "homeassistant.helpers.update_coordinator": update_coordinator,
             "homeassistant.helpers.entity_platform": MagicMock(),
             "homeassistant.helpers.entity_registry": entity_registry,
+            "homeassistant.helpers.start": MagicMock(),
             "homeassistant.util": MagicMock(),
             "homeassistant.util.dt": dt_mod,
             "homeassistant.components": MagicMock(),

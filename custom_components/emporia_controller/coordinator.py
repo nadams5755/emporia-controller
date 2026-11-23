@@ -82,6 +82,7 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
             config.get(CONF_SUPER_OFFPEAK_END_HOUR, DEFAULT_SUPER_OFFPEAK_END_HOUR)
         )
         self._last_targets: dict[str, int] = {}
+        self._ha_started: bool = False
         _LOGGER.setLevel(
             logging.DEBUG if config.get(CONF_DEBUG_LOGGING, False) else logging.NOTSET
         )
@@ -122,7 +123,17 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         await self._save_state()
         await self.async_request_refresh()
 
+    async def async_handle_ha_started(self, _hass: HomeAssistant) -> None:
+        _LOGGER.debug("Home Assistant started — starting control loop")
+        self._ha_started = True
+        await self.async_request_refresh()
+
     async def _async_update_data(self) -> dict:
+        if not self._ha_started:
+            # Other integrations' entities (Powerwall sensors, EVSE switches) may not exist yet;
+            # reading them now logs spurious "unavailable" warnings and commands to them are dropped.
+            _LOGGER.debug("Waiting for Home Assistant to finish starting — skipping control loop")
+            return {}
         if self._disabled:
             _LOGGER.debug("Controller disabled — skipping control loop")
             return {}

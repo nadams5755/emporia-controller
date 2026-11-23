@@ -599,3 +599,23 @@ async def test_set_mode_persists_state():
     c._store.async_save.assert_called_once_with(
         {"evse_modes": c._evse_modes}
     )
+
+# ---------------------------------------------------------------------------
+# Startup gating
+# ---------------------------------------------------------------------------
+
+async def test_update_data_skips_control_loop_until_ha_started():
+    c = make_loop_coordinator()
+    c._run_control_loop = AsyncMock()
+    assert await c._async_update_data() == {}
+    c._run_control_loop.assert_not_called()
+    c.hass.services.async_call.assert_not_called()
+
+async def test_ha_started_enables_control_loop_and_refreshes():
+    c = make_loop_coordinator()
+    c.async_request_refresh = AsyncMock()
+    c._run_control_loop = AsyncMock(return_value={"targets": {}})
+    await c.async_handle_ha_started(c.hass)
+    c.async_request_refresh.assert_awaited_once()
+    assert await c._async_update_data() == {"targets": {}}
+    c._run_control_loop.assert_awaited_once()
