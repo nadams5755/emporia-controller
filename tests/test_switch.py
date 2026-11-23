@@ -71,6 +71,7 @@ def test_switch_unique_id_replaces_dot_with_underscore():
     [
         (ChargeMode.EXCESS_SOLAR, "Excess Solar Charge"),
         (ChargeMode.FULL_SPEED_OFFPEAK, "Off-Peak Full Speed Charge"),
+        (ChargeMode.SUPER_OFFPEAK, "Super Off-Peak Charging"),
         (ChargeMode.OVERRIDE, "Full Speed Charge Now"),
     ],
 )
@@ -95,6 +96,7 @@ def test_is_off_when_mode_does_not_match():
 @pytest.mark.parametrize("active_mode", [
     ChargeMode.EXCESS_SOLAR,
     ChargeMode.FULL_SPEED_OFFPEAK,
+    ChargeMode.SUPER_OFFPEAK,
     ChargeMode.OVERRIDE,
 ])
 def test_exactly_one_switch_is_on_for_each_mode(active_mode):
@@ -103,6 +105,7 @@ def test_exactly_one_switch_is_on_for_each_mode(active_mode):
         for mode, _ in [
             (ChargeMode.EXCESS_SOLAR, ""),
             (ChargeMode.FULL_SPEED_OFFPEAK, ""),
+            (ChargeMode.SUPER_OFFPEAK, ""),
             (ChargeMode.OVERRIDE, ""),
         ]
     ]
@@ -127,6 +130,11 @@ async def test_turn_on_offpeak():
     sw = make_switch(mode=ChargeMode.FULL_SPEED_OFFPEAK)
     await sw.async_turn_on()
     sw.coordinator.set_mode.assert_called_once_with("switch.evse1", ChargeMode.FULL_SPEED_OFFPEAK)
+
+async def test_turn_on_super_offpeak():
+    sw = make_switch(mode=ChargeMode.SUPER_OFFPEAK)
+    await sw.async_turn_on()
+    sw.coordinator.set_mode.assert_called_once_with("switch.evse1", ChargeMode.SUPER_OFFPEAK)
 
 async def test_turn_off_is_noop():
     sw = make_switch(mode=ChargeMode.OVERRIDE)

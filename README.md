@@ -37,11 +37,15 @@ Configuration is done directly in the Home Assistant UI, no manual config file e
 | **Site power sensor** | Sensor reporting total site power in kW — negative values mean exporting to the grid (excess solar) |
 | **Battery power sensor** | Sensor reporting battery power in kW — positive values mean the battery is discharging |
 | **Circuit voltage** | Voltage of the EV charger circuits (typically 240V for residential) |
+| **Super off-peak start hour** | Hour of day (0–23) when the Super Off-Peak Charging window starts (default 9 = 9am) |
+| **Super off-peak end hour** | Hour of day (0–23) when the Super Off-Peak Charging window ends, exclusive (default 14 = 2pm). May be earlier than the start hour to wrap past midnight |
 | **Enable debug logging** | Log detailed controller decisions to the Home Assistant log |
 | **Disable controller** | Pause all controller activity without removing the integration |
 | **Reset charge mode state** | Clear saved charge mode for all EVSEs and return to defaults on next restart |
 
-The last three fields are primarily useful after initial setup and are accessible at any time via **Settings → Devices & Services → Emporia EVSE Controller → Configure**.
+Changes made via **Configure** take effect immediately — the integration reloads automatically.
+
+The super off-peak hours and the last three fields are primarily useful after initial setup and are accessible at any time via **Settings → Devices & Services → Emporia EVSE Controller → Configure**.
 
 ## tl;dr
 
@@ -67,6 +71,7 @@ Edge case behavior:
 
 For each emporia EVSE in home assistant, it provides the following buttons/controls for users in home-assistant:
 * charge at full speed off-peak hours between midnight and 3pm
+* super off-peak charging: charge at full speed during the configurable super off-peak window (default 9am–2pm); pauses while the powerwalls are discharging
 * charge at full speed now regardless of timeframe (an override)
 * charge on excess solar
 

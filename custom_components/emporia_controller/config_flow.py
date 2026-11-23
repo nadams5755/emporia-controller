@@ -11,10 +11,19 @@ from .const import (
     CONF_EVSE_ENTITIES,
     CONF_RESET_STATE,
     CONF_SITE_POWER_SENSOR,
+    CONF_SUPER_OFFPEAK_END_HOUR,
+    CONF_SUPER_OFFPEAK_START_HOUR,
     CONF_VOLTAGE,
+    DEFAULT_SUPER_OFFPEAK_END_HOUR,
+    DEFAULT_SUPER_OFFPEAK_START_HOUR,
     DEFAULT_VOLTAGE,
     DOMAIN,
 )
+
+def _hour_selector() -> selector.NumberSelector:
+    return selector.NumberSelector(
+        selector.NumberSelectorConfig(min=0, max=23, step=1, mode="box")
+    )
 
 def _build_schema(defaults: dict) -> vol.Schema:
     return vol.Schema(
@@ -45,6 +54,14 @@ def _build_schema(defaults: dict) -> vol.Schema:
                     min=100, max=480, step=1, unit_of_measurement="V", mode="box"
                 )
             ),
+            vol.Optional(
+                CONF_SUPER_OFFPEAK_START_HOUR,
+                default=defaults.get(CONF_SUPER_OFFPEAK_START_HOUR, DEFAULT_SUPER_OFFPEAK_START_HOUR),
+            ): _hour_selector(),
+            vol.Optional(
+                CONF_SUPER_OFFPEAK_END_HOUR,
+                default=defaults.get(CONF_SUPER_OFFPEAK_END_HOUR, DEFAULT_SUPER_OFFPEAK_END_HOUR),
+            ): _hour_selector(),
             vol.Optional(
                 CONF_DEBUG_LOGGING,
                 default=defaults.get(CONF_DEBUG_LOGGING, False),

@@ -232,6 +232,54 @@ async def test_full_speed_offpeak_pauses_when_powerwall_discharges():
     assert result["targets"]["switch.driveway"] == 0
 
 # ---------------------------------------------------------------------------
+# "Super Off-Peak Charging" button
+# ---------------------------------------------------------------------------
+
+async def test_super_offpeak_waits_until_9am():
+    """'Super Off-Peak Charging' pressed overnight waits for the 9am super off-peak window."""
+    c = scenario(
+        evse_entities=["switch.driveway"],
+        modes={"switch.driveway": ChargeMode.SUPER_OFFPEAK},
+        export_kw=0.0,
+        battery_kw=0.0,
+    )
+    assert (await run_loop(c, hour=3))["targets"]["switch.driveway"] == 0
+    assert (await run_loop(c, hour=9))["targets"]["switch.driveway"] == 48
+
+async def test_super_offpeak_charges_full_speed_on_cloudy_day():
+    """During super off-peak the car charges at full speed even with no solar export."""
+    c = scenario(
+        evse_entities=["switch.driveway"],
+        modes={"switch.driveway": ChargeMode.SUPER_OFFPEAK},
+        export_kw=3.0,   # importing from grid
+        battery_kw=0.0,
+    )
+    result = await run_loop(c, hour=12)
+    assert result["targets"]["switch.driveway"] == 48
+
+async def test_super_offpeak_stops_at_2pm():
+    """'Super Off-Peak Charging' automatically stops when the window ends at 2pm."""
+    c = scenario(
+        evse_entities=["switch.driveway"],
+        modes={"switch.driveway": ChargeMode.SUPER_OFFPEAK},
+        export_kw=0.0,
+        battery_kw=0.0,
+    )
+    assert (await run_loop(c, hour=13))["targets"]["switch.driveway"] == 48
+    assert (await run_loop(c, hour=14))["targets"]["switch.driveway"] == 0
+
+async def test_super_offpeak_pauses_when_powerwall_discharges():
+    """If the Powerwall starts discharging during super off-peak charging, the car pauses."""
+    c = scenario(
+        evse_entities=["switch.driveway"],
+        modes={"switch.driveway": ChargeMode.SUPER_OFFPEAK},
+        export_kw=0.0,
+        battery_kw=1.0,
+    )
+    result = await run_loop(c, hour=10)
+    assert result["targets"]["switch.driveway"] == 0
+
+# ---------------------------------------------------------------------------
 # "Charge Full Speed Now" (override) button
 # ---------------------------------------------------------------------------
 

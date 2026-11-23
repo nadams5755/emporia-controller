@@ -2,12 +2,14 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
-from custom_components.emporia_controller.coordinator import EmporiaCoordinator
+from custom_components.emporia_controller.coordinator import EmporiaCoordinator, _hour_in_window
 from custom_components.emporia_controller.const import (
     BATTERY_DISCHARGE_THRESHOLD_KW,
     CONF_BATTERY_POWER_SENSOR,
     CONF_EVSE_ENTITIES,
     CONF_SITE_POWER_SENSOR,
+    CONF_SUPER_OFFPEAK_END_HOUR,
+    CONF_SUPER_OFFPEAK_START_HOUR,
     CONF_VOLTAGE,
     DEFAULT_MAX_AMPS,
     DEFAULT_VOLTAGE,
@@ -24,7 +26,7 @@ def make_state(value, attributes=None):
     state.attributes = attributes or {}
     return state
 
-def make_coordinator(evse_entities=None, voltage=DEFAULT_VOLTAGE):
+def make_coordinator(evse_entities=None, voltage=DEFAULT_VOLTAGE, options=None):
     """Return an EmporiaCoordinator backed by mock HA objects."""
     hass = MagicMock()
     hass.services.async_call = AsyncMock()
@@ -37,7 +39,7 @@ def make_coordinator(evse_entities=None, voltage=DEFAULT_VOLTAGE):
         CONF_BATTERY_POWER_SENSOR: "sensor.battery",
         CONF_VOLTAGE: voltage,
     }
-    entry.options = {}
+    entry.options = options or {}
 
     coordinator = EmporiaCoordinator(hass, entry)
 
@@ -54,10 +56,11 @@ def make_loop_coordinator(
     battery_kw=0.0,
     evse_entities=None,
     modes=None,
+    options=None,
 ):
     """Return a coordinator pre-wired with sensor states for control-loop tests."""
     entities = evse_entities or ["switch.evse1"]
-    coordinator = make_coordinator(evse_entities=entities)
+    coordinator = make_coordinator(evse_entities=entities, options=options)
     coordinator._evse_modes = modes or {e: ChargeMode.EXCESS_SOLAR for e in entities}
 
     def get_state(entity_id):
@@ -321,6 +324,67 @@ async def test_control_loop_offpeak_powerwall_discharging():
         result = await c._run_control_loop()
     assert result["targets"]["switch.evse1"] == 0
 
+# ---------------------------------------------------------------------------
+# Super off-peak mode
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("hour, start, end, expected", [
+    (9, 9, 14, True),     # start is inclusive
+    (13, 9, 14, True),
+    (14, 9, 14, False),   # end is exclusive
+    (8, 9, 14, False),
+    (23, 22, 2, True),    # wraps past midnight
+    (1, 22, 2, True),
+    (2, 22, 2, False),
+    (12, 22, 2, False),
+    (9, 9, 9, False),     # equal start/end = empty window
+])
+def test_hour_in_window(hour, start, end, expected):
+    assert _hour_in_window(hour, start, end) is expected
+
+async def run_super_offpeak(hour, battery_kw=0.0, options=None):
+    c = make_loop_coordinator(
+        battery_kw=battery_kw,
+        modes={"switch.evse1": ChargeMode.SUPER_OFFPEAK},
+        options=options,
+    )
+    with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
+        dt.now.return_value = at(hour)
+        return await c._run_control_loop()
+
+async def test_control_loop_super_offpeak_default_window_charges_full_speed():
+    result = await run_super_offpeak(hour=9)
+    assert result["targets"]["switch.evse1"] == 48
+
+async def test_control_loop_super_offpeak_default_window_end_is_exclusive():
+    result = await run_super_offpeak(hour=14)
+    assert result["targets"]["switch.evse1"] == 0
+    assert result["skip_reasons"]["switch.evse1"] == "outside super off-peak window"
+
+async def test_control_loop_super_offpeak_before_default_window():
+    result = await run_super_offpeak(hour=8)
+    assert result["targets"]["switch.evse1"] == 0
+
+async def test_control_loop_super_offpeak_powerwall_discharging():
+    result = await run_super_offpeak(hour=10, battery_kw=1.0)
+    assert result["targets"]["switch.evse1"] == 0
+    assert result["skip_reasons"]["switch.evse1"] == "powerwall discharging"
+
+async def test_control_loop_super_offpeak_uses_configured_hours():
+    options = {CONF_SUPER_OFFPEAK_START_HOUR: 6.0, CONF_SUPER_OFFPEAK_END_HOUR: 8.0}  # NumberSelector yields floats
+    assert (await run_super_offpeak(hour=6, options=options))["targets"]["switch.evse1"] == 48
+    assert (await run_super_offpeak(hour=9, options=options))["targets"]["switch.evse1"] == 0
+
+async def test_control_loop_super_offpeak_ignores_solar():
+    c = make_loop_coordinator(
+        export_kw=0.5,  # importing from grid
+        modes={"switch.evse1": ChargeMode.SUPER_OFFPEAK},
+    )
+    with patch("custom_components.emporia_controller.coordinator.dt_util") as dt:
+        dt.now.return_value = at(11)
+        result = await c._run_control_loop()
+    assert result["targets"]["switch.evse1"] == 48
+
 async def test_control_loop_excess_solar_charges_when_exporting():
     c = make_loop_coordinator(
         export_kw=-2.0,  # 2000 W export → 2000/240 = 8 A
@@ -500,6 +564,12 @@ async def test_load_state_normalizes_retired_mode_to_default():
     c._store.async_load.return_value = {"evse_modes": {"switch.evse1": "stopped"}}
     await c.async_load_state()
     assert c._evse_modes["switch.evse1"] == ChargeMode.EXCESS_SOLAR
+
+async def test_load_state_restores_super_offpeak_mode():
+    c = make_coordinator()
+    c._store.async_load = AsyncMock(return_value={"evse_modes": {"switch.evse1": ChargeMode.SUPER_OFFPEAK}})
+    await c.async_load_state()
+    assert c.get_mode("switch.evse1") == ChargeMode.SUPER_OFFPEAK
 
 async def test_load_state_defaults_missing_evses():
     c = make_coordinator(["switch.evse1", "switch.evse2"])

@@ -17,8 +17,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### User-Facing Controls (per EVSE in Home Assistant)
 1. Charge at full speed off-peak (midnight–3pm)
-2. Charge at full speed now (override — ignores time/solar)
-3. Charge on excess solar (default)
+2. Super Off-Peak Charging — full speed during a configurable window (default 9am–2pm); pauses while Powerwalls discharge
+3. Charge at full speed now (override — ignores time/solar)
+4. Charge on excess solar (default)
 
 No dedicated "stop" control: the EVSE's own switch entity is already stateful, and the controller re-asserts its computed state every control loop cycle, so a manual toggle won't stick. Use the `disabled` config option to pause the controller and hand switches back to manual/native control.
 
@@ -40,13 +41,13 @@ No dedicated "stop" control: the EVSE's own switch entity is already stateful, a
 **Home Assistant custom component** (Python). Lives in `custom_components/emporia_controller/`.
 
 - Async control loop (15s minimum interval) reads Powerwall state + grid export sensor, computes target current, calls Emporia EVSE service
-- State machine per EVSE (`excess_solar` / `full_speed_offpeak` / `override`) persisted via HA `.storage` helper
+- State machine per EVSE (`excess_solar` / `full_speed_offpeak` / `super_offpeak` / `override`) persisted via HA `.storage` helper
 - Current allocation: total available amps ÷ active EVSE count, floored at 6A minimum per EVSE
 - User controls exposed as native HA entities
 
 ## Configuration Options
 
-Set at install time and reconfigurable via Settings → Devices & Services → Emporia EVSE Controller → Configure. No entity IDs are hardcoded.
+Set at install time and reconfigurable via Settings → Devices & Services → Emporia EVSE Controller → Configure. No entity IDs are hardcoded. Saving options reloads the integration so changes apply without an HA restart.
 
 | Option | Key | Description |
 |---|---|---|
@@ -54,6 +55,8 @@ Set at install time and reconfigurable via Settings → Devices & Services → E
 | Site power sensor | `site_power_sensor` | kW sensor; negative = exporting to grid (excess solar) |
 | Battery power sensor | `battery_power_sensor` | kW sensor; positive = discharging |
 | Circuit voltage | `voltage` | Charger circuit voltage (default 240V) |
+| Super off-peak start hour | `super_offpeak_start_hour` | Hour (0–23) the Super Off-Peak Charging window starts (default 9) |
+| Super off-peak end hour | `super_offpeak_end_hour` | Hour (0–23) the window ends, exclusive (default 14); wraps past midnight if < start |
 | Enable debug logging | `debug_logging` | Log detailed controller decisions to HA log |
 | Disable controller | `disabled` | Pause all activity without removing the integration |
 | Reset charge mode state | `reset_state` | Clear persisted charge mode; returns to defaults on next restart |

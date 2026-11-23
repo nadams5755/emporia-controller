@@ -19,8 +19,12 @@ from .const import (
     CONF_EVSE_ENTITIES,
     CONF_RESET_STATE,
     CONF_SITE_POWER_SENSOR,
+    CONF_SUPER_OFFPEAK_END_HOUR,
+    CONF_SUPER_OFFPEAK_START_HOUR,
     CONF_VOLTAGE,
     DEFAULT_MAX_AMPS,
+    DEFAULT_SUPER_OFFPEAK_END_HOUR,
+    DEFAULT_SUPER_OFFPEAK_START_HOUR,
     DEFAULT_VOLTAGE,
     DOMAIN,
     MIN_CHARGE_AMPS,
@@ -34,7 +38,18 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-_VALID_MODES = {ChargeMode.EXCESS_SOLAR, ChargeMode.FULL_SPEED_OFFPEAK, ChargeMode.OVERRIDE}
+_VALID_MODES = {
+    ChargeMode.EXCESS_SOLAR,
+    ChargeMode.FULL_SPEED_OFFPEAK,
+    ChargeMode.SUPER_OFFPEAK,
+    ChargeMode.OVERRIDE,
+}
+
+def _hour_in_window(hour: int, start: int, end: int) -> bool:
+    """True if hour falls in [start, end). Wraps past midnight when start > end; empty when equal."""
+    if start <= end:
+        return start <= hour < end
+    return hour >= start or hour < end
 
 
 def _solar_skip_reason(in_charging_window: bool) -> str:
@@ -59,6 +74,12 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         self._battery_power_sensor: str = config[CONF_BATTERY_POWER_SENSOR]
         self._voltage: int = config.get(CONF_VOLTAGE, DEFAULT_VOLTAGE)
         self._disabled: bool = config.get(CONF_DISABLED, False)
+        self._super_offpeak_start: int = int(
+            config.get(CONF_SUPER_OFFPEAK_START_HOUR, DEFAULT_SUPER_OFFPEAK_START_HOUR)
+        )
+        self._super_offpeak_end: int = int(
+            config.get(CONF_SUPER_OFFPEAK_END_HOUR, DEFAULT_SUPER_OFFPEAK_END_HOUR)
+        )
         self._last_targets: dict[str, int] = {}
         _LOGGER.setLevel(
             logging.DEBUG if config.get(CONF_DEBUG_LOGGING, False) else logging.NOTSET
@@ -113,14 +134,25 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
         now = dt_util.now()
         hour = now.hour
         in_charging_window = CHARGING_WINDOW_START_HOUR <= hour < CHARGING_WINDOW_END_HOUR
-        in_offpeak = CHARGING_WINDOW_START_HOUR <= hour < OFFPEAK_END_HOUR
+        # Scheduled full-speed modes: mode → (currently in its window, window name for skip reasons)
+        scheduled_windows: dict[str, tuple[bool, str]] = {
+            ChargeMode.FULL_SPEED_OFFPEAK: (
+                CHARGING_WINDOW_START_HOUR <= hour < OFFPEAK_END_HOUR, "off-peak"
+            ),
+            ChargeMode.SUPER_OFFPEAK: (
+                _hour_in_window(hour, self._super_offpeak_start, self._super_offpeak_end), "super off-peak"
+            ),
+        }
 
         powerwall_discharging = self._is_powerwall_discharging()
         export_watts = self._get_export_watts()
 
         _LOGGER.debug(
-            "Control loop: hour=%d window=%s offpeak=%s pw_discharging=%s export=%.0fW",
-            hour, in_charging_window, in_offpeak, powerwall_discharging, export_watts,
+            "Control loop: hour=%d window=%s offpeak=%s super_offpeak=%s pw_discharging=%s export=%.0fW",
+            hour, in_charging_window,
+            scheduled_windows[ChargeMode.FULL_SPEED_OFFPEAK][0],
+            scheduled_windows[ChargeMode.SUPER_OFFPEAK][0],
+            powerwall_discharging, export_watts,
         )
 
         targets: dict[str, int] = {}
@@ -134,13 +166,11 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
             if mode == ChargeMode.OVERRIDE:
                 targets[evse] = self._get_max_amps(evse)
 
-            elif mode == ChargeMode.FULL_SPEED_OFFPEAK:
-                if in_offpeak and not powerwall_discharging:
-                    targets[evse] = self._get_max_amps(evse)
-                else:
-                    reason = "powerwall discharging" if powerwall_discharging else "outside off-peak window"
-                    _LOGGER.debug("%s full_speed_offpeak skipped: %s", evse, reason)
-                    targets[evse] = 0
+            elif mode in scheduled_windows:
+                targets[evse], reason = self._scheduled_target(
+                    evse, mode, *scheduled_windows[mode], powerwall_discharging
+                )
+                if reason:
                     skip_reasons[evse] = reason
 
             elif mode == ChargeMode.EXCESS_SOLAR:
@@ -170,6 +200,16 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
             "export_watts": export_watts,
             "available_watts": available_watts,
         }
+
+    def _scheduled_target(
+        self, evse: str, mode: str, in_window: bool, window_name: str, powerwall_discharging: bool
+    ) -> tuple[int, str | None]:
+        """Full speed inside a scheduled mode's window; paused outside it or while the Powerwall discharges."""
+        if in_window and not powerwall_discharging:
+            return self._get_max_amps(evse), None
+        reason = "powerwall discharging" if powerwall_discharging else f"outside {window_name} window"
+        _LOGGER.debug("%s %s skipped: %s", evse, mode, reason)
+        return 0, reason
 
     def _allocate_solar_current(
         self, evses: list[str], export_watts: float, powerwall_discharging: bool

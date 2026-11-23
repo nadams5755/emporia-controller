@@ -17,6 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 _MODES: list[tuple[str, str]] = [
     (ChargeMode.EXCESS_SOLAR, "Excess Solar Charge"),
     (ChargeMode.FULL_SPEED_OFFPEAK, "Off-Peak Full Speed Charge"),
+    (ChargeMode.SUPER_OFFPEAK, "Super Off-Peak Charging"),
     (ChargeMode.OVERRIDE, "Full Speed Charge Now"),
 ]
 
