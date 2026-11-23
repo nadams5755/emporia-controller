@@ -8,8 +8,9 @@ from unittest.mock import MagicMock
 class _DataUpdateCoordinator:
     """Minimal DataUpdateCoordinator stub that satisfies EmporiaCoordinator's super().__init__."""
 
-    def __init__(self, hass, logger, *, name, update_interval):
+    def __init__(self, hass, logger, *, name, update_interval, config_entry=None):
         self.hass = hass
+        self.config_entry = config_entry
         self.logger = logger
         self.name = name
         self.update_interval = update_interval
