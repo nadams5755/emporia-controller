@@ -13,6 +13,7 @@ from custom_components.emporia_controller.const import (
     CONF_VOLTAGE,
     DEFAULT_MAX_AMPS,
     DEFAULT_VOLTAGE,
+    EVSE_RESYNC_GRACE_SECONDS,
     ChargeMode,
 )
 
@@ -279,6 +280,58 @@ async def test_set_evse_current_change_from_previous_calls_service():
     c._last_targets["switch.evse1"] = 12
     await c._set_evse_current("switch.evse1", 16)  # changed → must call
     c.hass.services.async_call.assert_called()
+
+async def test_set_evse_current_resends_when_switch_reverted_off():
+    # emporia_vue can report the charger off right after we turned it on; same target
+    # must not be deduped forever while the switch disagrees.
+    c = make_coordinator()
+    c._last_targets["switch.evse1"] = 48
+    c.hass.states.get.return_value = make_state("off")
+    await c._set_evse_current("switch.evse1", 48)
+    calls = c.hass.services.async_call.call_args_list
+    assert [call[0][:2] for call in calls] == [
+        ("switch", "turn_on"), ("emporia_vue", "set_charger_current")
+    ]
+
+async def test_set_evse_current_resends_turn_off_when_switch_on():
+    c = make_coordinator()
+    c._last_targets["switch.evse1"] = 0
+    c.hass.states.get.return_value = make_state("on")
+    await c._set_evse_current("switch.evse1", 0)
+    c.hass.services.async_call.assert_called_once_with(
+        "switch", "turn_off", {"entity_id": "switch.evse1"}, blocking=True
+    )
+
+async def test_set_evse_current_no_resend_when_switch_matches():
+    c = make_coordinator()
+    c._last_targets["switch.evse1"] = 16
+    c.hass.states.get.return_value = make_state("on")
+    await c._set_evse_current("switch.evse1", 16)
+    c.hass.services.async_call.assert_not_called()
+
+@pytest.mark.parametrize("state", ["unavailable", "unknown"])
+async def test_set_evse_current_no_resend_when_switch_unavailable(state):
+    c = make_coordinator()
+    c._last_targets["switch.evse1"] = 16
+    c.hass.states.get.return_value = make_state(state)
+    await c._set_evse_current("switch.evse1", 16)
+    c.hass.services.async_call.assert_not_called()
+
+async def test_set_evse_current_waits_grace_period_before_resend():
+    c = make_coordinator()
+    with patch("custom_components.emporia_controller.coordinator.time") as t:
+        t.monotonic.return_value = 1000.0
+        await c._set_evse_current("switch.evse1", 48)  # initial command
+        c.hass.services.async_call.reset_mock()
+        c.hass.states.get.return_value = make_state("off")
+
+        t.monotonic.return_value = 1000.0 + EVSE_RESYNC_GRACE_SECONDS - 1
+        await c._set_evse_current("switch.evse1", 48)
+        c.hass.services.async_call.assert_not_called()  # cloud may not have caught up yet
+
+        t.monotonic.return_value = 1000.0 + EVSE_RESYNC_GRACE_SECONDS
+        await c._set_evse_current("switch.evse1", 48)
+        c.hass.services.async_call.assert_called()
 
 # ---------------------------------------------------------------------------
 # _run_control_loop — mode logic

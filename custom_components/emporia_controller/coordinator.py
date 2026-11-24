@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
@@ -27,6 +28,7 @@ from .const import (
     DEFAULT_SUPER_OFFPEAK_START_HOUR,
     DEFAULT_VOLTAGE,
     DOMAIN,
+    EVSE_RESYNC_GRACE_SECONDS,
     MIN_CHARGE_AMPS,
     OFFPEAK_END_HOUR,
     SOLAR_RATE_STEP_AMPS,
@@ -82,6 +84,7 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
             config.get(CONF_SUPER_OFFPEAK_END_HOUR, DEFAULT_SUPER_OFFPEAK_END_HOUR)
         )
         self._last_targets: dict[str, int] = {}
+        self._last_command_at: dict[str, float] = {}
         self._ha_started: bool = False
         _LOGGER.setLevel(
             logging.DEBUG if config.get(CONF_DEBUG_LOGGING, False) else logging.NOTSET
@@ -341,16 +344,37 @@ class EmporiaCoordinator(DataUpdateCoordinator[dict]):
             return int(state.attributes["max_charging_rate"])
         return DEFAULT_MAX_AMPS
 
+    def _evse_out_of_sync(self, evse_entity: str, amps: int) -> bool:
+        """True if the EVSE switch's actual on/off state contradicts the target we last commanded.
+
+        Catches commands the charger dropped or reverted (e.g. emporia_vue writing back a stale
+        charger_on=False from the cloud right after turn_on), which deduping on target alone
+        would never retry.
+        """
+        last = self._last_command_at.get(evse_entity)
+        if last is not None and time.monotonic() - last < EVSE_RESYNC_GRACE_SECONDS:
+            return False
+        state = self.hass.states.get(evse_entity)
+        if state is None or state.state not in ("on", "off"):
+            return False
+        return (state.state == "on") != (amps > 0)
+
     async def _set_evse_current(self, evse_entity: str, amps: int) -> None:
         previous = self._last_targets.get(evse_entity)
         if previous == amps:
-            return
-
-        _LOGGER.info(
-            "%s charging rate: %s A → %s A",
-            evse_entity, previous if previous is not None else "unset", amps,
-        )
+            if not self._evse_out_of_sync(evse_entity, amps):
+                return
+            _LOGGER.warning(
+                "%s switch is %s but target is %s A — re-sending command",
+                evse_entity, self.hass.states.get(evse_entity).state, amps,
+            )
+        else:
+            _LOGGER.info(
+                "%s charging rate: %s A → %s A",
+                evse_entity, previous if previous is not None else "unset", amps,
+            )
         self._last_targets[evse_entity] = amps
+        self._last_command_at[evse_entity] = time.monotonic()
 
         if amps == 0:
             await self.hass.services.async_call(

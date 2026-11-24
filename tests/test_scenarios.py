@@ -209,6 +209,25 @@ async def test_full_speed_offpeak_at_midnight_charges_immediately():
     result = await run_loop(c, hour=0)
     assert result["targets"]["switch.driveway"] == 48
 
+async def test_full_speed_offpeak_retries_when_charger_reverts_to_off():
+    """Midnight: controller turns the charger on, but emporia_vue reports it back off a
+    moment later. The next control loop past the grace period must turn it on again
+    instead of assuming it is still charging."""
+    c = scenario(["switch.driveway"], {"switch.driveway": ChargeMode.FULL_SPEED_OFFPEAK},
+                 export_kw=0.6, battery_kw=0.0)
+    c._last_targets["switch.driveway"] = 48
+    c._last_command_at["switch.driveway"] = 0.0  # long ago
+    switch_state = make_state("off", {"max_charging_rate": 48})
+    sensors = c.hass.states.get.side_effect
+    c.hass.states.get.side_effect = (
+        lambda e: switch_state if e == "switch.driveway" else sensors(e)
+    )
+
+    await run_loop(c, hour=0)
+
+    services = [call[0][:2] for call in c.hass.services.async_call.call_args_list]
+    assert services == [("switch", "turn_on"), ("emporia_vue", "set_charger_current")]
+
 async def test_full_speed_offpeak_stops_at_3pm():
     """'Charge Full Speed Off-Peak' automatically stops when the off-peak window ends at 3pm."""
     c = scenario(

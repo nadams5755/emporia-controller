@@ -6,6 +6,9 @@ DEFAULT_MAX_AMPS = 48
 DEFAULT_VOLTAGE = 240
 BATTERY_DISCHARGE_THRESHOLD_KW = 0.1
 SOLAR_RATE_STEP_AMPS = 2  # max amps to increase per control loop iteration in solar mode
+# Min seconds after commanding an EVSE before re-sending because its switch state disagrees
+# (gives the Emporia cloud time to reflect the command before we treat it as dropped)
+EVSE_RESYNC_GRACE_SECONDS = 60
 
 # Charging allowed midnight–4pm local time (exclusive end)
 CHARGING_WINDOW_START_HOUR = 0
